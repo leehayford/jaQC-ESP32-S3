@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "format": "c",
+        "app_utils.h": "c",
+        "stdbool.h": "c",
+        "esp_log.h": "c",
+        "sockets.h": "c"
+    }
+}

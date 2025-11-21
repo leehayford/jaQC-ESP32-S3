@@ -1,0 +1,27 @@
+idf_component_register(
+    SRCS 
+        "app_main.c"
+        "util_err.c"
+        "util_device.c"
+        "util_flash.c"
+        "util_filesys.c"
+        "util_tcpip.c"
+        "util_wifi.c"
+        "util_dns.c"
+        "util_http.c"
+        "models.c"
+        "model_config.c"
+        "model_op_state.c"
+        "jaqc_admin.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES 
+        nvs_flash
+        spiffs
+        esp_netif
+        esp_event
+        esp_system
+        esp_wifi
+        freertos
+        log
+)
