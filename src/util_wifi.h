@@ -37,7 +37,7 @@ typedef enum {
 } portal_ui_phase_t;
 portal_ui_phase_t   get_portal_phase(void);
 portal_ui_phase_t   set_portal_phase(portal_ui_phase_t p);
-const char*         portal_phasse_to_str(portal_ui_phase_t p);
+const char*         portal_phase_to_str(portal_ui_phase_t p);
 
 
 typedef enum {
@@ -51,7 +51,11 @@ const char*         wifi_err_to_str(wifi_err_t e);
 typedef enum {
     NET_WORK_AP_DISABLE,
     NET_WORK_AP_ENABLE,
-    NET_WORK_RETRY
+    NET_WORK_CONNECT,
+    NET_WORK_STOP,
+    NET_WORK_START,
+    NET_WORK_SET_CONFIG_AP,
+    NET_WORK_SET_CONFIG_STA
 } net_work_cmd_t;
 
 typedef struct {
@@ -63,9 +67,9 @@ typedef struct {
 
 esp_err_t       wifi_init(char prefix[10], char ssid[33], char pass[65]);
 esp_err_t       wifi_start_sta(const char *ssid, const char *pass);
-esp_err_t       wifi_switch_to_sta(void);
-esp_err_t       wifi_disable_ap_if_sta_connected(uint32_t timeout_ms);
-ip4_addr_t      wifi_get_ap_ip(void);
+// esp_err_t       wifi_switch_to_sta(void);
+// esp_err_t       wifi_disable_ap_if_sta_connected(uint32_t timeout_ms);
+// ip4_addr_t      wifi_get_ap_ip(void);
 
 // New façade used by HTTP
 char*           wifi_scan_json(void);          // returns malloc'ed JSON (caller frees)

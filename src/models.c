@@ -40,6 +40,13 @@ esp_err_t models_init(void) {
 
 /* TODO: 
 esp_err_t validate_model(char *name) {}
+*/
 
-
+/* TODO: on NET_EVENT_WIFI_STA_GOT_IP
+    - s_cfg.wifi_ssid = get_wifi_ssid()
+    - s_cfg.wifi_pass = get_wifi_pass()
+    - store s_cfg in NVS 
+    
+    - s_ops.ip_addr = wifi_get_ip_str() 
+    - store s_ops in NVS
 */

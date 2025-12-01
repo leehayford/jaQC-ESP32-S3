@@ -15,6 +15,8 @@ extern nvs_handle_t s_ops_nvs;
 
 esp_err_t ops_get(ops_t *out) {
     if (!out) return ESP_ERR_INVALID_ARG;
+
+    LOG_INFO(TAG, "retrieving operational state data from flash...");
     
     // FLASH_CHECK(s_ops_nvs, "wifi_state", &out->wifi_state);
     FLASH_CHECK(s_ops_nvs, "wifi_err", &out->wifi_err);

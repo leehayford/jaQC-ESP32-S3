@@ -1,16 +1,19 @@
 #include "util_http.h"
 #include "util_err.h"
+#include "util_net_events.h"
 #include "util_wifi.h"
 #include "util_html_fb.h"
-// #include "models.h"
 #include "esp_wifi.h"
 #include "esp_http_server.h"
+#include "esp_http_client.h"
 #include "esp_spiffs.h"
 #include "cJSON.h"
 #include <string.h>
 #include <inttypes.h> // Required for PRIu32
 
 static const char *TAG = "UTIL_HTTP";
+
+static TaskHandle_t s_web_update_task;
 
 static httpd_handle_t server = NULL;
 
@@ -83,6 +86,53 @@ httpd_uri_t captive_msft_redirect_uri   = {.uri     = "/redirect",
 };
 
 // *** END Captiv portal stuff **********************************************
+
+
+const char *FILE_PATH_HTML_INDEX = "/storage/index.html";
+const char *URL_UPDATE_WEB = "http://10.0.0.233:8013/api/jaqc/update_web/index.html";
+esp_err_t update_web_files() {
+    esp_http_client_config_t config = {
+        .url = URL_UPDATE_WEB,
+        .timeout_ms = 5000
+    };
+    
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        LOG_ERR(TAG, ESP_FAIL, "failed to init HTTP client");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = esp_http_client_open(client, 0);
+    if (err != ESP_OK) {
+        LOG_ERR(TAG, err, "failed to open HTTP connection: ");
+        esp_http_client_cleanup(client);
+        return err;
+    }
+
+    int content_length = esp_http_client_fetch_headers(client);
+    if (content_length <= 0) {
+        LOG_WARN(TAG, ESP_FAIL, "invalid content length");
+    }
+
+    FILE *f = fopen(FILE_PATH_HTML_INDEX, "w");
+    if (!f) {
+        LOG_ERR(TAG, ESP_FAIL, "failed to open file for writing");
+        esp_http_client_cleanup(client);
+        return ESP_FAIL;
+    }
+
+    char buffer[512];
+    int data_read;
+    while ((data_read = esp_http_client_read(client, buffer, sizeof(buffer))) > 0) {
+        fwrite(buffer, 1, data_read, f);
+    }
+
+    fclose(f);
+    esp_http_client_cleanup(client);
+    LOG_INFO(TAG, "file downloaded and saved to %s", FILE_PATH_HTML_INDEX);
+    return ESP_OK;
+
+}
 
 static esp_err_t status_get_handler(httpd_req_t *req) {
    
@@ -159,7 +209,6 @@ esp_err_t connect_post_handler(httpd_req_t *req) {
         received += ret;
     }
     buf[received] = '\0';
-    LOG_INFO("CONNECT", "Raw POST data[%d]: %s", received, buf);
 
     // Parse JSON
     cJSON *json = cJSON_Parse(buf);
@@ -216,7 +265,7 @@ esp_err_t home_page_handler(httpd_req_t *req) {
     }
     
     // Otherwise serve home page 
-    FILE *f = fopen("/storage/index.html", "rb");
+    FILE *f = fopen(FILE_PATH_HTML_INDEX, "rb");
     if (f) {
         httpd_resp_set_type(req, "text/html");
         char buf[1024]; 
@@ -236,8 +285,6 @@ httpd_uri_t home_uri                    = {.uri       = "/",
     .handler   = home_page_handler, 
     .user_ctx  = NULL
 };
-
-
 
 esp_err_t register_route(const httpd_uri_t *uri_handler) {
     esp_err_t err = httpd_register_uri_handler(server, uri_handler);
@@ -275,133 +322,3 @@ esp_err_t start_webserver(void) {
     return ESP_OK;
 }
 
-
-
-// static esp_err_t status_get_handler(httpd_req_t *req) {
-//     char json[160];
-
-//     char ip[16] = {0};
-//     bool have_ip = wifi_get_ip_str(ip, sizeof(ip)) == ESP_OK;
-
-    // int n = snprintf(json, sizeof(json), 
-    //     "{\"state\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"err\": %" PRIu32 "}",
-    //     wifi_state_to_str(get_wifi_ui_state()),
-    //     s_cfg.wifi_ssid,
-    //     have_ip ? ip : "",
-    //     s_ops.wifi_err
-    // );
-//     httpd_resp_set_type(req, "application/json");
-//     return httpd_resp_send(req, json, n);
-// }
-
-// static const httpd_uri_t status_uri = {
-//     .uri = "/api/status", 
-//     .method = HTTP_GET, 
-//     .handler = status_get_handler,
-//     .user_ctx = NULL
-// };
-
-
-
-
-
-// Handle local Wi-Fi connection attempt from captive portal page
-// esp_err_t connect_post_handler(httpd_req_t *req) {
-//     LOG_INFO("CONNECT", "POST /connect handler invoked");
-//     char buf[256];
-//     int total_len = req->content_len;
-//     int received = 0;
-
-//     while (received < total_len) {
-//         int ret = httpd_req_recv(req, buf + received, total_len - received);
-//         if (ret <= 0) {
-//             httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty body");
-//             return ESP_FAIL;
-//         }
-//         received += ret;
-//     }
-//     buf[received] = '\0'; 
-//     LOG_INFO("CONNECT", "Raw POST data[%d]: %s", received, buf);
-
-//     // Parse JSON
-//     cJSON *json = cJSON_Parse(buf);
-//     if (!json) {
-//         LOG_ERR("CONNECT", ESP_FAIL, "Failed to parse JSON");
-//         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad json");
-//     }
-
-//     const cJSON *ssid_json  = cJSON_GetObjectItem(json, "ssid");
-//     const cJSON *pass_json  = cJSON_GetObjectItem(json, "pass");
-
-//     static char ssid[64] = {0}, pass[64] = {0};
-//     if (cJSON_IsString(ssid_json) && (ssid_json->valuestring != NULL)) {
-//         strncpy(ssid, ssid_json->valuestring, sizeof(ssid) - 1);
-//     }
-//     if (cJSON_IsString(pass_json) && (pass_json->valuestring != NULL)) {
-//         strncpy(pass, pass_json->valuestring, sizeof(pass) - 1);
-//     }
-//     cJSON_Delete(json); // LOG_INFO("CONNECT", "Received SSID: %s, Password: %s", ssid, pass);
-
-//     // Attempt to connect to Wi-Fi
-//     esp_err_t err = wifi_start_sta(ssid, pass);
-//     if (err != ESP_OK) {
-//         LOG_ERR(TAG, err, "summmmmbudyfuktup!");
-//         httpd_resp_set_status(req, "500");
-//         httpd_resp_set_type(req, "text/html");
-//         return httpd_resp_sendstr(req, "summmmmbudyfuktup!");
-//     }
-    
-//     // // Respond with a redirect or status page
-//     // httpd_resp_set_status(req, "302 Found");
-//     // httpd_resp_set_hdr(req, "Location", "/" );
-//     // httpd_resp_send(req, "Connecting...", HTTPD_RESP_USE_STRLEN);
-//     // // return wifi_disable_ap_if_sta_connected(WIFI_WAIT_FOR_IP_ms);
-    
-//     // httpd_resp_set_status(req, "200 OK");
-//     // httpd_resp_set_type(req, "text/html");
-//     // return httpd_resp_sendstr(req, fb_switch_html);
-//     // return httpd_resp_sendstr(req, "what the fuck!!!!!?");
-//     httpd_resp_set_type(req, "text/html");
-//     const char *html =
-//     "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-//     "<title>Connecting…</title>"
-//     "<style>body{font-family:system-ui,Segoe UI,Arial,sans-serif;padding:20px;max-width:600px;margin:auto;}"
-//     ".ok{color:#16a34a}.err{color:#dc2626}.muted{color:#64748b}</style>"
-//     "<h1>Connecting to Wi‑Fi…</h1>"
-//     "<p id=s class=muted>Waiting for IP…</p>"
-//     "<div id=done style='display:none'>"
-//     "<p class=ok>Connected!</p>"
-//     "<p>Device IP: <b id=ip></b></p>"
-//     "<p>Now switch your phone/computer to your normal Wi‑Fi network,"
-//     " then open: <a id=link href=# target=_self>(loading…)</a></p>"
-//     "<button id=finish>Finish &amp; turn off setup Wi‑Fi</button>"
-//     "</div>"
-//     "<script>"
-//     "async function poll(){"
-//     "  try{"
-//     "    const r=await fetch('/api/status',{cache:'no-store'});"
-//     "    const j=await r.json();"
-//     "    const s=document.getElementById('s');"
-//     "    if(j.state==='connected'){"
-//     "      document.getElementById('done').style.display='block';"
-//     "      s.textContent='Connected to '+(j.ssid||'')+' with IP '+(j.ip||'');"
-//     "      document.getElementById('ip').textContent=j.ip||'';"
-//     "      const url='http://'+(j.ip||'')+'/';"
-//     "      const a=document.getElementById('link'); a.href=url; a.textContent=url;"
-//     "      clearInterval(t);"
-//     "    }else if(j.state==='failed'){"
-//     "      s.className='err'; s.textContent='Connection failed. Please go back and try again.';"
-//     "      clearInterval(t);"
-//     "    }else{"
-//     "      s.textContent='Connecting to '+(j.ssid||'')+'…';"
-//     "    }"
-//     "  }catch(e){}"
-//     "}"
-//     "const t=setInterval(poll,1000);"
-//     "document.getElementById('finish').onclick=()=>{fetch('/api/finish',{method:'POST'}).then(()=>{"
-//     "  document.getElementById('finish').disabled=true;"
-//     "  document.getElementById('finish').textContent='Turning off…';"
-//     "});};"
-//     "</script>";
-//     return httpd_resp_sendstr(req, html);
-// }

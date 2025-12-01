@@ -7,6 +7,22 @@
 #include "util_wifi.h"
 #include "util_http.h"
 #include "models.h"
+#include "jaqc_admin.h"
+
+// jaqc_io.h/.c
+#include "driver/gpio.h"
+
+void io_init(uint64_t pin_def) {
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << pin_def), // Bit mask for the pin
+        .mode = GPIO_MODE_OUTPUT,           // Set as output
+        .pull_up_en = GPIO_PULLUP_DISABLE,  // No pull-up
+        .pull_down_en = GPIO_PULLDOWN_DISABLE, // No pull-down
+        .intr_type = GPIO_INTR_DISABLE      // No interrupt
+    };
+    gpio_config(&io_conf);
+}
+
 
 // jaqc_http.h/.c
 #include "esp_http_server.h"
@@ -61,10 +77,17 @@ void confirm_filesys_init() {
     }
 }
 
-void confirm_tcpip_init() {
-    esp_err_t err = tcpip_init_once();
+// void confirm_tcpip_init() {
+//     esp_err_t err = tcpip_init_once();
+//     if (err != ESP_OK) {
+//         LOG_ERR(TAG, err, "tcp/ip test failed...");
+//     }
+// }
+
+void confirm_net_events_init() {
+    esp_err_t err = net_events_init_once();
     if (err != ESP_OK) {
-        LOG_ERR(TAG, err, "tcp/ip test failed...");
+        LOG_ERR(TAG, err, "net events init test failed...");
     }
 }
 
@@ -110,8 +133,13 @@ void app_main(void) {
     // Initialize file system
     ESP_ERROR_CHECK(filesys_init()); // confirm_filesys_init();
 
-    // Initialize TCP/IP stack 
-    ESP_ERROR_CHECK(tcpip_init_once()); // confirm_tcpip_init();
+    /* TODO: REMOVE util_tcpip.h/.c & below after util_net_events.c testing */
+    // // Initialize TCP/IP stack 
+    // ESP_ERROR_CHECK(tcpip_init_once()); // confirm_tcpip_init();
+
+    // Initialize TCP/IP stack & default event loop for Wi-Fi & IP events
+    // ESP_ERROR_CHECK(net_events_init_once());
+    confirm_net_events_init();
     
     // Initialize Wi-Fi
     // ESP_ERROR_CHECK(wifi_init());
@@ -125,11 +153,37 @@ void app_main(void) {
     // Connect to MQTT broker & subscribe to .../cmd, .../diag
     // ESP_ERROR_CHECK(mqtt_connect()); 
 
+    io_init(PIN_OUT_WIFI_BLUE_LED);
+    io_init(PIN_OUT_WIFI_RED_LED);
 
-
+    int count = 0;
     // Do tasks
     while(1) {
-        vTaskDelay(pdMS_TO_TICKS(10000));
-        LOG_INFO(TAG, "WIFI Status %s", wifi_state_to_str(get_wifi_state()));
+        count++;
+        vTaskDelay(pdMS_TO_TICKS(500));
+
+        wifi_ui_state_t wifi_state = get_wifi_state();
+        switch (wifi_state) {
+            case WIFI_UI_IDLE: 
+            case WIFI_UI_FAILED:
+            case WIFI_UI_DISCONNECTED:
+                gpio_set_level(PIN_OUT_WIFI_BLUE_LED, LED_OFF);
+                gpio_set_level(PIN_OUT_WIFI_RED_LED, count % 2);
+                break;
+
+            case WIFI_UI_CONNECTING: 
+                gpio_set_level(PIN_OUT_WIFI_BLUE_LED, count % 2);
+                gpio_set_level(PIN_OUT_WIFI_RED_LED, LED_OFF);
+                break;
+
+            case WIFI_UI_CONNECTED: 
+                gpio_set_level(PIN_OUT_WIFI_BLUE_LED, LED_ON);
+                gpio_set_level(PIN_OUT_WIFI_RED_LED, LED_OFF);
+                break;
+            
+        }
+
+        if (count % 20 == 0)
+            LOG_INFO(TAG, "WIFI Status %s", wifi_state_to_str(wifi_state));
     }
 }

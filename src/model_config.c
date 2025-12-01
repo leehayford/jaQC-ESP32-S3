@@ -3,6 +3,7 @@
 #include "util_err.h"
 #include "esp_check.h"
 #include "nvs_flash.h"
+#include <string.h>
 
 static const char *TAG = "MODEL_CFG";
 
@@ -12,8 +13,13 @@ esp_err_t cfg_get(cfg_t *out) {
     if (!out) return ESP_ERR_INVALID_ARG;
     esp_err_t err = ESP_OK;
 
+    LOG_INFO(TAG, "retrieving configuration data from flash...");
+
     err = flash_get_str(s_cfg_nvs, "serial", out->serial, sizeof(out->serial));
-    if (err != ESP_OK ) { LOG_ERR(TAG, err, "failed to get serial"); return err; }
+    if (err != ESP_OK ) { 
+        LOG_ERR(TAG, err, "failed to get serial"); 
+        return err; 
+    }
 
     FLASH_CHECK(s_cfg_nvs, "serial", out->serial);
     FLASH_CHECK(s_cfg_nvs, "hw_class", out->hw_class);
@@ -89,3 +95,5 @@ esp_err_t cfg_validate(cfg_t *cfg) {
 
     return ESP_OK;
 }
+
+
