@@ -2,9 +2,8 @@
 #include "util_err.h"
 #include "util_net_events.h"
 #include "util_device.h"
-#include "util_tcpip.h"
 #include "util_dns.h"
-// #include "util_http.h"
+
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_mac.h"
@@ -23,7 +22,8 @@ static const char *TAG = "UTIL_WIFI";
 
 static QueueHandle_t s_netq = NULL;
 static TaskHandle_t s_wifi_worker = NULL;
-
+static wifi_config_t s_ap_conf;
+static wifi_config_t s_sta_conf;
 static char s_ssid[64] = {0};
 static char s_pass[64] = {0};
 static esp_netif_ip_info_t s_ip;
@@ -58,6 +58,19 @@ const char *wifi_state_to_str(wifi_ui_state_t s) { // LOG_INFO(TAG, "wfif_state_
     }
 }
 
+static const char* authmode_to_str(wifi_auth_mode_t m) {
+    switch (m) {
+        case WIFI_AUTH_OPEN: return "open";
+        case WIFI_AUTH_WEP: return "wep";
+        case WIFI_AUTH_WPA_PSK: return "wpa-psk";
+        case WIFI_AUTH_WPA2_PSK: return "wpa2-psk";
+        case WIFI_AUTH_WPA_WPA2_PSK: return "wpa/wpa2-psk";
+        case WIFI_AUTH_WPA3_PSK: return "wpa3-psk";
+        case WIFI_AUTH_WPA2_WPA3_PSK: return "wpa2/wpa3-psk";
+        case WIFI_AUTH_WAPI_PSK: return "wapi-psk";
+        default: return "unknown";
+    }
+}
 
 /* WIFI WORKER TASK ***********************************************************************
  This task does all of the heavy lifting for NET_EVENTs, timers, interrupts
@@ -80,7 +93,7 @@ static void wifi_worker_task(void *arg) {
                 case NET_WORK_AP_DISABLE: {
                     
                     LOG_INFO(TAG, "disabling access point...");
-                    
+                    vTaskDelay(pdMS_TO_TICKS(1000));
                     err = esp_wifi_set_mode(WIFI_MODE_STA);
                     if (err != ESP_OK) LOG_ERR(TAG, err, "set wifi mode to STA failed:");
                     else LOG_INFO(TAG, "access point disabled (station-only mode enabled)");
@@ -139,7 +152,6 @@ static void wifi_worker_task(void *arg) {
                     if (msg.arg) {
                         wifi_config_t *cfg = (wifi_config_t *)msg.arg;
                         err = esp_wifi_set_config(WIFI_IF_AP, cfg);
-                        free(cfg);
                     } 
                     if (err != ESP_OK) LOG_ERR(TAG, err, "wifi access point config attempt failed:");
                     else LOG_INFO(TAG, "wifi access point configured");
@@ -153,8 +165,7 @@ static void wifi_worker_task(void *arg) {
                     
                     if (msg.arg) {
                         wifi_config_t *cfg = (wifi_config_t *)msg.arg;
-                        err = esp_wifi_set_config(WIFI_IF_STA, cfg);
-                        free(cfg);  
+                        err = esp_wifi_set_config(WIFI_IF_STA, cfg); 
                     }
                     if (err != ESP_OK) LOG_ERR(TAG, err, "wifi access point config attempt failed:");
                     else LOG_INFO(TAG, "wifi configured for station mode");
@@ -255,18 +266,16 @@ esp_err_t wifi_start_ap(char *prefix) {
 
     char ssid[33] = "";
     make_ap_ssid(prefix, ssid); 
-    wifi_config_t ap_conf = {
-        .ap = {
-            .ssid_len = strlen(ssid), 
-            .channel = 1,
-            .password = "",
-            .max_connection = 4,
-            .authmode = WIFI_AUTH_OPEN,
-        }
-    };
-    strncpy((char *)ap_conf.ap.ssid, ssid, sizeof(ap_conf.ap.ssid));
 
-    wifi_worker_post(NET_WORK_SET_CONFIG_AP, &ap_conf);
+    wifi_config_t ap_conf = {0};
+    ap_conf.ap.ssid_len = strlen(ssid); 
+    strncpy((char *)ap_conf.ap.ssid, ssid, sizeof(ap_conf.ap.ssid));
+    ap_conf.ap.channel = 1; 
+    ap_conf.ap.max_connection = 4; 
+    ap_conf.ap.authmode = WIFI_AUTH_OPEN;
+
+    s_ap_conf = ap_conf; // copy to static/global
+    wifi_worker_post(NET_WORK_SET_CONFIG_AP, &s_ap_conf);
 
     return ESP_OK;
 }
@@ -279,14 +288,15 @@ esp_err_t wifi_start_sta(const char *ssid, const char *pass) {
     strncpy((char *)sta_conf.sta.ssid, ssid, sizeof(sta_conf.sta.ssid));
     strncpy((char *)sta_conf.sta.password, pass, sizeof(sta_conf.sta.password));
 
-    wifi_worker_post(NET_WORK_SET_CONFIG_STA, &sta_conf);
+    strncpy(s_ssid, ssid, sizeof(s_ssid)); 
+    strncpy(s_pass, pass, sizeof(s_pass));  
+
+    s_sta_conf = sta_conf;
+    wifi_worker_post(NET_WORK_SET_CONFIG_STA, &s_sta_conf);
     
     wifi_worker_post(NET_WORK_CONNECT, NULL);
 
     set_wifi_state(WIFI_UI_CONNECTING); 
-
-    strncpy(s_ssid, ssid, sizeof(s_ssid)); 
-    strncpy(s_pass, pass, sizeof(s_pass));  
 
     return ESP_OK;
 }
@@ -385,7 +395,6 @@ esp_err_t wifi_init(char prefix[10], char ssid[33], char pass[65]) {
     LOG_INFO(TAG, "wifi default station created OK");
 
     wifi_worker_init();
-    ESP_ERROR_CHECK(wifi_init_grace_timer());
 
     // TODO: NET_EVENT handlers
     net_events_subscribe(NET_EVENT_WIFI_STA_START, on_wifi_sta_start, NULL);
@@ -393,7 +402,7 @@ esp_err_t wifi_init(char prefix[10], char ssid[33], char pass[65]) {
     net_events_subscribe(NET_EVENT_WIFI_STA_DISCONNECTED, on_wifi_sta_disconnected, NULL);
     net_events_subscribe(NET_EVENT_WIFI_STA_GOT_IP, on_wifi_sta_got_ip, NULL);
     
-    net_events_subscribe(NET_EVENT_WIFI_AP_START, on_wifi_sta_got_ip, NULL);
+    net_events_subscribe(NET_EVENT_WIFI_AP_START, on_wifi_ap_start, NULL);
     net_events_subscribe(NET_EVENT_WIFI_AP_STACONNECTED, on_wifi_ap_staconnected, NULL);
     net_events_subscribe(NET_EVENT_WIFI_AP_STADISCONNECTED, on_wifi_ap_stadisconnected, NULL);
 
@@ -410,181 +419,10 @@ esp_err_t wifi_init(char prefix[10], char ssid[33], char pass[65]) {
     // Start Wi-Fi after both configs applied
     wifi_worker_post(NET_WORK_START, NULL); // ESP_ERROR_CHECK(esp_wifi_start());
    
-    return wifi_disable_ap_if_sta_connected(WIFI_WAIT_FOR_IP_ms);
+    return ESP_OK;
 }
 
 
 
 
-
-
-
-
-
-// const char *portal_phase_to_str(portal_ui_phase_t p) {
-//     switch (p) {
-//         case PORTAL_SELECT:         return "select";
-//         case PORTAL_CONNECTING:     return "connecting";
-//         case PORTAL_CONNECTED:      return "connected";
-//         default:                    return "unknown";
-//     }
-// }
-
-// const char *wifi_err_to_str(wifi_err_t s) {
-//     switch (s) {
-//         case WIFI_ERR_NONE:         return "none";
-//         case WIFI_ERR_AUTH_FAIL:    return "auth failed";
-//         case WIFI_ERR_NO_AP_FOUND:  return "access point not found";
-//         default:                    return "unknown";
-//     }
-// }
-
-// static const char* authmode_to_str(wifi_auth_mode_t m) {
-//     switch (m) {
-//         case WIFI_AUTH_OPEN: return "open";
-//         case WIFI_AUTH_WEP: return "wep";
-//         case WIFI_AUTH_WPA_PSK: return "wpa-psk";
-//         case WIFI_AUTH_WPA2_PSK: return "wpa2-psk";
-//         case WIFI_AUTH_WPA_WPA2_PSK: return "wpa/wpa2-psk";
-//         case WIFI_AUTH_WPA3_PSK: return "wpa3-psk";
-//         case WIFI_AUTH_WPA2_WPA3_PSK: return "wpa2/wpa3-psk";
-//         case WIFI_AUTH_WAPI_PSK: return "wapi-psk";
-//         default: return "unknown";
-//     }
-// }
-
-
-
-// esp_err_t wifi_disable_ap_if_sta_connected(uint32_t timeout_ms) {
-//     if (!s_wifi_ev) {
-//         LOG_WARN(TAG, ESP_FAIL, "Event group not initialized");
-//         return ESP_FAIL;
-//     }
-
-//     EventBits_t bits = xEventGroupWaitBits(s_wifi_ev,
-//         WIFI_BIT_STA_GOT_IP | WIFI_BIT_STA_FAILED,
-//         pdTRUE,
-//         pdFALSE,
-//         pdMS_TO_TICKS(timeout_ms));
-
-//     if (bits & WIFI_BIT_STA_GOT_IP) {
-//         LOG_INFO(TAG, "STA connected successfully, disabling AP to save power");
-        
-//         wifi_worker_post(NET_WORK_START, NULL); // ESP_ERROR_CHECK(esp_wifi_stop());
-//         wifi_worker_post(NET_WORK_AP_ENABLE, NULL); //  // ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-//         // wifi_worker_post(NET_WORK_AP_DISABLE);
-//         wifi_worker_post(NET_WORK_STOP, NULL); // ESP_ERROR_CHECK(esp_wifi_start());
-//         s_sw_ap = false;
-//         return ESP_OK;
-//     } else {
-//         LOG_WARN(TAG, ESP_FAIL, "STA failed or timed out, keeping AP active");
-//         return ESP_FAIL;
-//     }
-// }
-
-
-// static void ap_grace_timer_cb(void *arg) {
-//     // Do NOT call esp_wifi_set_mode() here!
-//     wifi_worker_post(NET_WORK_AP_DISABLE, NULL);
-// }
-
-// esp_err_t wifi_init_grace_timer(void) {
-//     const esp_timer_create_args_t targs = {
-//         .callback = &ap_grace_timer_cb,
-//         .arg = NULL,
-//         .name = "ap_grace_timer"
-//     };
-//     return esp_timer_create(&targs, &s_ap_grace_timer);
-// }
-
-// void wifi_start_ap_grace_period(uint64_t us) {
-//     if (esp_timer_is_active(s_ap_grace_timer)) {
-//         ESP_ERROR_CHECK(esp_timer_stop(s_ap_grace_timer));
-//     }
-//     ESP_ERROR_CHECK(esp_timer_start_once(s_ap_grace_timer, us));
-// }
-
-
-// static void on_ip_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
-    
-//     if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
-//         ip_event_got_ip_t *e = (ip_event_got_ip_t*)data;
-
-//         // LOG_WARN(TAG, ESP_OK, "IP EVENT: HighWater sys_evt: %u", uxTaskGetStackHighWaterMark(NULL));
-
-//         s_ip = e->ip_info;
-//         set_wifi_state(WIFI_UI_CONNECTED);
-//         set_portal_phase(PORTAL_CONNECTED);
-
-//         LOG_INFO(TAG, "STA IP: \x1b[38;5;200m" IPSTR "\x1b[0m  GW: " IPSTR "  MASK: " IPSTR,
-//             IP2STR(&e->ip_info.ip),
-//             IP2STR(&e->ip_info.gw),
-//             IP2STR(&e->ip_info.netmask)
-//         );
-  
-//         xEventGroupSetBits(s_wifi_ev, WIFI_BIT_STA_GOT_IP);
-
-//         // Start grace period (e.g., 12 seconds)
-//         wifi_start_ap_grace_period(12 * 1000 * 1000ULL);
-
-//     }
-// }
-
-
-// static void on_wifi_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
-//     if (base != WIFI_EVENT) return;
-//     switch (id) {
-
-//         // case WIFI_EVENT_STA_START: {
-//         //     LOG_INFO(TAG, "STA started");
-//         //     break;
-//         // }
-//         // case WIFI_EVENT_STA_CONNECTED: { 
-//         //     LOG_INFO(TAG, "STA connected (waiting for IP)"); 
-//         //     break;
-//         // }
-//         // case WIFI_EVENT_STA_DISCONNECTED: {
-//         //     LOG_INFO(TAG, "STA disconnected");
-//         //     wifi_event_sta_disconnected_t *e = (wifi_event_sta_disconnected_t *)data;
-//         //     LOG_INFO(TAG, "STA disconnected -> reason: %d", e->reason);
-
-//         //     if (e->reason == WIFI_REASON_AUTH_FAIL 
-//         //     ||  e->reason == WIFI_REASON_HANDSHAKE_TIMEOUT
-//         //     ||  e->reason == WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT) {
-//         //         // Wrong password or auth failure
-//         //         set_wifi_state(WIFI_UI_FAILED);
-//         //         set_portal_phase(PORTAL_ERROR);
-//         //         s_last_err = WIFI_ERR_AUTH_FAIL;
-//         //     } else if (e->reason == WIFI_REASON_NO_AP_FOUND) {
-//         //         set_wifi_state(WIFI_UI_FAILED);
-//         //         set_portal_phase(PORTAL_ERROR);
-//         //         s_last_err = WIFI_ERR_NO_AP_FOUND;
-//         //     } else {
-//         //         set_wifi_state(WIFI_UI_DISCONNECTED);
-//         //         set_portal_phase(PORTAL_IDLE);
-//         //         s_last_err = WIFI_ERR_UNKNOWN;
-//         //     }
-
-//         //     xEventGroupSetBits(s_wifi_ev, WIFI_BIT_STA_FAILED);
-//         //     break;
-//         // }
-
-//         // case WIFI_EVENT_AP_START: {
-//         //     ip4_addr_t ap = wifi_get_ap_ip();
-//         //     LOG_INFO(TAG, "Software Access Point started at \x1b[38;5;200m %s \x1b[0m", ip4addr_ntoa(&ap));
-//         //     break;
-//         // }
-//         // case WIFI_EVENT_AP_STACONNECTED: {
-//         //     wifi_event_ap_staconnected_t* e = (wifi_event_ap_staconnected_t*)data;
-//         //     LOG_INFO(TAG, "STA joined: " MACSTR, MAC2STR(e->mac));
-//         //     break;
-//         // }
-//         // case WIFI_EVENT_AP_STADISCONNECTED: {
-//         //     wifi_event_ap_stadisconnected_t* e = (wifi_event_ap_stadisconnected_t*)data;
-//         //     LOG_INFO(TAG, "STA left: " MACSTR, MAC2STR(e->mac));
-//         //     break;
-//         // }
-//         // default: break;
-//     }
-// }
 

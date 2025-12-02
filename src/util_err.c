@@ -1,6 +1,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_console.h"
+
 #include <string.h>
 
 #define ANSI_COLOR_INFO     "\x1b[38;5;79m"

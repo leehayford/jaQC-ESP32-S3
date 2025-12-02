@@ -12,9 +12,9 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug",
-            "executable": "d:/DatacanStuff/JaQC/firmware/jaQC-ESP32-S3/.pio/build/esp32-s3-devkitc-1/firmware.elf",
+            "executable": "c:/Projects/ESP32/jaqc/.pio/build/esp32-s3-devkitc-1/firmware.elf",
             "projectEnvName": "esp32-s3-devkitc-1",
-            "toolchainBinDir": "C:/Users/Lee/.platformio/packages/toolchain-xtensa-esp-elf/bin",
+            "toolchainBinDir": "C:/Users/lee.hayford.DATACAN.000/.platformio/packages/toolchain-xtensa-esp-elf/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "preLaunchTask": {
                 "type": "PlatformIO",
@@ -25,18 +25,18 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (skip Pre-Debug)",
-            "executable": "d:/DatacanStuff/JaQC/firmware/jaQC-ESP32-S3/.pio/build/esp32-s3-devkitc-1/firmware.elf",
+            "executable": "c:/Projects/ESP32/jaqc/.pio/build/esp32-s3-devkitc-1/firmware.elf",
             "projectEnvName": "esp32-s3-devkitc-1",
-            "toolchainBinDir": "C:/Users/Lee/.platformio/packages/toolchain-xtensa-esp-elf/bin",
+            "toolchainBinDir": "C:/Users/lee.hayford.DATACAN.000/.platformio/packages/toolchain-xtensa-esp-elf/bin",
             "internalConsoleOptions": "openOnSessionStart"
         },
         {
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (without uploading)",
-            "executable": "d:/DatacanStuff/JaQC/firmware/jaQC-ESP32-S3/.pio/build/esp32-s3-devkitc-1/firmware.elf",
+            "executable": "c:/Projects/ESP32/jaqc/.pio/build/esp32-s3-devkitc-1/firmware.elf",
             "projectEnvName": "esp32-s3-devkitc-1",
-            "toolchainBinDir": "C:/Users/Lee/.platformio/packages/toolchain-xtensa-esp-elf/bin",
+            "toolchainBinDir": "C:/Users/lee.hayford.DATACAN.000/.platformio/packages/toolchain-xtensa-esp-elf/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "loadMode": "manual"
         }

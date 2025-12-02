@@ -1,11 +1,13 @@
 #ifndef MODEL_OPS_H
 #define MODEL_OPS_H
 
-#include <stdint.h>
-#include <stdbool.h>
-#include "esp_err.h"
 #include "util_wifi.h"
 #include "util_http.h"
+
+#include "esp_err.h"
+
+#include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {

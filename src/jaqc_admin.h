@@ -1,9 +1,11 @@
 #ifndef JAQC_ADMIN_H
 #define JAQC_ADMIN_H
 
-#include <stdbool.h>
-#include "driver/gpio.h"
 #include "esp_err.h"
+
+#include "driver/gpio.h"
+
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {

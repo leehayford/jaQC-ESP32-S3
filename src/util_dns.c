@@ -1,11 +1,12 @@
 #include "util_dns.h"
 #include "util_err.h"
 
+#include "esp_log.h"
+
 #include "lwip/udp.h"
 #include "lwip/ip_addr.h"
 #include "lwip/pbuf.h"
 #include "lwip/inet.h"
-#include "esp_log.h"
 
 
 static const char *TAG = "UTIL_DNS";

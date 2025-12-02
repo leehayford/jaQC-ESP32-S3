@@ -1,13 +1,14 @@
 #include "model_op_state.h"
 #include "util_flash.h"
 #include "util_err.h"
-#include "esp_check.h"
-#include "nvs_flash.h"
-#include "cJSON.h"
-#include <string.h>
 
 #include "esp_netif.h"  // for IPSTR, IP2STR
+#include "esp_check.h"
+#include "nvs_flash.h"
 #include "lwip/ip4_addr.h"   // for ip4_addr_t
+
+#include "cJSON.h"
+#include <string.h>
 
 static const char *TAG = "MODEL_OPS";
 

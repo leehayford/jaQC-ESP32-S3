@@ -3,10 +3,12 @@
 #include "util_net_events.h"
 #include "util_wifi.h"
 #include "util_html_fb.h"
+
 #include "esp_wifi.h"
 #include "esp_http_server.h"
 #include "esp_http_client.h"
 #include "esp_spiffs.h"
+
 #include "cJSON.h"
 #include <string.h>
 #include <inttypes.h> // Required for PRIu32
@@ -141,11 +143,10 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
     char ip[16] = {0};
 
     int n = snprintf(json, sizeof(json), 
-        "{\"state\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"err\": %" PRIu32 "}",
+        "{\"state\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\"}",
         wifi_state_to_str(get_wifi_state()),
         get_wifi_ssid(),
-        wifi_get_ip_str(ip, sizeof(ip)) == ESP_OK ? ip : "",
-        (uint32_t)wifi_last_err()
+        wifi_get_ip_str(ip, sizeof(ip)) == ESP_OK ? ip : ""
     );
 
     httpd_resp_set_type(req, "application/json");
@@ -316,7 +317,7 @@ esp_err_t start_webserver(void) {
     register_route(&connect_uri);
 
     // Home
-    // register_route(&catch_all_uri);
+    register_route(&catch_all_uri);
     register_route(&home_uri);
 
     return ESP_OK;

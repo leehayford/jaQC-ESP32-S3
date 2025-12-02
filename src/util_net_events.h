@@ -26,7 +26,7 @@ typedef enum {
     // - WIFI_EVENT_STA_CONNECTED ->  wifi_event_sta_connected_t -> esp_wifi_types_generic.h
     NET_EVENT_WIFI_STA_CONNECTED,
 
-    // - IP_EVENT_STA_GOT_IP -> esp_netif_ip_info_t -> esp_netif_types.h
+    // - IP_EVENT_STA_GOT_IP -> ip_event_got_ip_t -> esp_netif_types.h
     NET_EVENT_WIFI_STA_GOT_IP,
 
     // - IP_EVENT_STA_LOST_IP -> NULL -> esp_netif_types.h
@@ -41,8 +41,11 @@ typedef enum {
     // - WIFI_EVENT_AP_STACONNECTED -> wifi_event_ap_staconnected_t -> esp_wifi_types_generic.h
     NET_EVENT_WIFI_AP_STACONNECTED,
 
-    // - WIFI_EVENT_AP_STADISCONNECTED - wifi_event_ap_stadisconnected_t-> esp_wifi_types_generic.h
+    // - WIFI_EVENT_AP_STADISCONNECTED - wifi_event_ap_stadisconnected_t -> esp_wifi_types_generic.h
     NET_EVENT_WIFI_AP_STADISCONNECTED,
+
+    // - WIFI_EVENT_HOME_CHANNEL_CHANGE - wifi_event_home_channel_change_t -> esp_wifi_types_generic.h
+    NET_EVENT_WIFI_HOME_CHANNEL_CHANGE,
 
 // *** Ethernet lifecycle ***********************
     
@@ -52,7 +55,7 @@ typedef enum {
     // NOT IMPLEMENTED - ??? -> NULL -> esp_association_unknown
     NET_EVENT_ETH_CONNECTED,
 
-    // NOT IMPLEMENTED - IP_EVENT_ETH_GOT_IP -> esp_netif_ip_info_t -> esp_netif_types.h
+    // NOT IMPLEMENTED - IP_EVENT_ETH_GOT_IP -> ip_event_got_ip_t -> esp_netif_types.h
     NET_EVENT_ETH_GOT_IP,
     
     // NOT IMPLEMENTED - IP_EVENT_ETH_LOST_IP -> NULL -> esp_netif_types.h

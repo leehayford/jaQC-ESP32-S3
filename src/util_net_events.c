@@ -62,7 +62,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
 
         case WIFI_EVENT_AP_START: {
 
-            esp_event_post(NET_EVENT, WIFI_EVENT_AP_START,  NULL, 0, portMAX_DELAY);
+            esp_event_post(NET_EVENT, NET_EVENT_WIFI_AP_START,  NULL, 0, portMAX_DELAY);
 
             break;
         }
@@ -79,11 +79,16 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
 
         case WIFI_EVENT_AP_STADISCONNECTED: {
 
-            esp_event_pot(NET_EVENT, NET_EVENT_WIFI_AP_STADISCONNECTED, 
+            esp_event_post(NET_EVENT, NET_EVENT_WIFI_AP_STADISCONNECTED, 
                 (wifi_event_ap_stadisconnected_t *)data, 
                 sizeof(*(wifi_event_ap_stadisconnected_t *)data), 
                 portMAX_DELAY);
 
+            break;
+        }
+
+        case WIFI_EVENT_HOME_CHANNEL_CHANGE: {
+            // LOG_INFO(TAG, "NET_EVENT_WIFI_HOME_CHANNEL_CHANGE id=%" PRId32, id);
             break;
         }
 

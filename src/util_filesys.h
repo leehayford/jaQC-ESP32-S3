@@ -1,8 +1,9 @@
 #ifndef UTIL_FILESYS_H
 #define UTIL_FILESYS_H
 
-#include <stdbool.h>
 #include "esp_err.h"
+
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {

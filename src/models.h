@@ -3,8 +3,9 @@
 
 #include "model_config.h"
 #include "model_op_state.h"
-#include "nvs_flash.h"
+
 #include "esp_err.h"
+#include "nvs_flash.h"
 
 #ifdef __cplusplus
 extern "C" {

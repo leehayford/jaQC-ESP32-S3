@@ -1,11 +1,12 @@
 #ifndef UTIL_FLASH_H
 #define UTIL_FLASH_H
 
-// #include <string.h>
-#include <stdbool.h>
+#include "util_err.h"
+
 #include "esp_err.h"
 #include "nvs_flash.h" 
-#include "util_err.h"
+
+#include <stdbool.h>
 
 #define FLASH_PARTITION "nvs"
 

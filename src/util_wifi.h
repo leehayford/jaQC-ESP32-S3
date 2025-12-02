@@ -1,9 +1,11 @@
 #ifndef UTIL_WIFI_H
 #define UTIL_WIFI_H
 
-#include <stdbool.h>
 #include "esp_err.h"
+
 #include "lwip/ip4_addr.h"   // for ip4_addr_t
+
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -74,7 +76,6 @@ esp_err_t       wifi_start_sta(const char *ssid, const char *pass);
 // New façade used by HTTP
 char*           wifi_scan_json(void);          // returns malloc'ed JSON (caller frees)
 esp_err_t       wifi_get_ip_str(char *out, size_t out_sz);
-esp_err_t       wifi_last_err(void);
 
 #ifdef __cplusplus
 }

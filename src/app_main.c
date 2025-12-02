@@ -1,13 +1,14 @@
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_log.h"
+#include "jaqc_admin.h"
+#include "models.h"
 #include "util_err.h"
 #include "util_filesys.h"
-#include "util_tcpip.h"
 #include "util_wifi.h"
 #include "util_http.h"
-#include "models.h"
-#include "jaqc_admin.h"
+
+#include "esp_log.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 // jaqc_io.h/.c
 #include "driver/gpio.h"
@@ -33,11 +34,10 @@ static esp_err_t whatever_get_handler(httpd_req_t *req) {
     char ip[16] = {0};
 
     int n = snprintf(json, sizeof(json), 
-        "{\"state\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"err\": %" PRIu32 "}",
+        "{\"state\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\"}",
         wifi_state_to_str(get_wifi_state()),
         get_wifi_ssid(),
-        wifi_get_ip_str(ip, sizeof(ip)) == ESP_OK ? ip : "",
-        (uint32_t)wifi_last_err()
+        wifi_get_ip_str(ip, sizeof(ip)) == ESP_OK ? ip : ""
     );
 
     httpd_resp_set_type(req, "application/json");
@@ -84,6 +84,7 @@ void confirm_filesys_init() {
 //     }
 // }
 
+#include "util_net_events.h"
 void confirm_net_events_init() {
     esp_err_t err = net_events_init_once();
     if (err != ESP_OK) {

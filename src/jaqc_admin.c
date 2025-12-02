@@ -1,10 +1,6 @@
 #include "jaqc_admin.h"
-
 #include "models.h"
 #include "model_config.h"
-
-
-
 
 esp_err_t factory_reset() {
 

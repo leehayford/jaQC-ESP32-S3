@@ -1,11 +1,11 @@
 #ifndef UTIL_ERR_H
 #define UTIL_ERR_H
 
+#include "esp_err.h"
+#include "esp_log.h"
 
 #include <stdio.h>
 #include <stdarg.h>
-#include "esp_err.h"
-#include "esp_log.h"
 
 #ifdef __cplusplus
 extern "C" {

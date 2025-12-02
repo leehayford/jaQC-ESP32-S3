@@ -1,18 +1,18 @@
 idf_component_register(
     SRCS 
         "app_main.c"
-        "util_err.c"
-        "util_device.c"
-        "util_flash.c"
-        "util_filesys.c"
-        "util_tcpip.c"
-        "util_wifi.c"
-        "util_dns.c"
-        "util_http.c"
-        "models.c"
+        "jaqc_admin.c"
         "model_config.c"
         "model_op_state.c"
-        "jaqc_admin.c"
+        "models.c"
+        "util_device.c"
+        "util_dns.c"
+        "util_err.c"
+        "util_filesys.c"
+        "util_flash.c"
+        "util_http.c"
+        "util_net_events.c"
+        "util_wifi.c"
     INCLUDE_DIRS
         "."
     REQUIRES 
