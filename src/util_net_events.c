@@ -31,6 +31,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
     
     switch(id) {
 
+        case WIFI_EVENT_SCAN_DONE: {
+            // LOG_INFO(TAG, "NET_EVENT_WIFI_SCAN_DONE id=%" PRId32, id);
+            break;
+        }
+
         case WIFI_EVENT_STA_START: { 
 
             esp_event_post(NET_EVENT, NET_EVENT_WIFI_STA_START, NULL, 0, portMAX_DELAY);

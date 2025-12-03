@@ -60,6 +60,18 @@ const char *wifi_state_to_str(wifi_ui_state_t s) { // LOG_INFO(TAG, "wfif_state_
     }
 }
 
+const char *portal_phase_to_str(portal_ui_phase_t s) { // LOG_INFO(TAG, "portal_ui_phase_t(%d)", s);
+    switch (s) {
+        case PORTAL_SELECT:         return "select";
+        case PORTAL_CONNECTING:     return "connecting";
+        case PORTAL_CONNECTED:      return "connected";
+        case PORTAL_STA_MODE:       return "STA mode";
+        case PORTAL_ERROR:          return "error";
+        case PORTAL_IDLE:           return "idle";
+        default:                    return "unknown";
+    }
+}
+
 static const char* authmode_to_str(wifi_auth_mode_t m) {
     switch (m) {
         case WIFI_AUTH_OPEN: return "open";
@@ -106,7 +118,10 @@ static void wifi_worker_task(void *arg) {
                     } else {
                         err = esp_wifi_set_mode(WIFI_MODE_STA);
                         if (err != ESP_OK) LOG_ERR(TAG, err, "set wifi mode to STA failed:");
-                        else LOG_INFO(TAG, "AP disabled (STA-only mode enabled)");
+                        else {
+                            LOG_INFO(TAG, "AP disabled (STA-only mode enabled)");
+                            set_portal_phase(PORTAL_STA_MODE);
+                        }
                     }
                     break;
                 }

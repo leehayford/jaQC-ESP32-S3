@@ -29,10 +29,11 @@ const char*         get_wifi_ssid(void);
 const char*         get_wifi_pass(void);
 
 typedef enum {
-    PORTAL_SELECT = 0,     // list SSIDs
-    PORTAL_CONNECTING,     // show "Connecting..." page
-    PORTAL_CONNECTED,      // show IP + instructions
-    PORTAL_ERROR,          // wrong password and shit...
+    PORTAL_SELECT = 0,      // list SSIDs
+    PORTAL_CONNECTING,      // show "Connecting..." page
+    PORTAL_CONNECTED,       // show IP + instructions
+    PORTAL_ERROR,           // wrong password and shit...
+    PORTAL_STA_MODE,        // we are connected to wifi captive portal done
     PORTAL_IDLE
 } portal_ui_phase_t;
 portal_ui_phase_t   get_portal_phase(void);

@@ -17,8 +17,6 @@
 
 static const char *TAG = "UTIL_HTTP";
 
-static TaskHandle_t s_web_update_task;
-
 static httpd_handle_t server = NULL;
 
 // *** Captiv portal stuff **************************************************
@@ -92,21 +90,39 @@ httpd_uri_t captive_msft_redirect_uri   = {.uri     = "/redirect",
 // *** END Captiv portal stuff **********************************************
 
 
-const char *FILE_PATH_HTML_INDEX = "/storage/index.html";
-// const char *URL_UPDATE_WEB = "http://10.0.0.233:8013/api/jaqc/update_web/index.html"; // Home
-const char *URL_UPDATE_WEB = "http://192.168.1.165:8013/api/jaqc/update_web/index.html"; // Work
-esp_err_t update_web_files() {
+
+#define FILE_PATH_HTML_INDEX "/storage/index.html"
+#define FILE_PATH_HTML_INDEX_TMP "/storage/index.html.tmp"
+
+// #define URL_UPDATE_WEB  "http://10.0.0.233:8013/api/jaqc/update_web/index.html" // Home
+#define URL_UPDATE_WEB  "http://192.168.1.165:8013/api/jaqc/update_web/index.html" // Work
+
+
+static esp_err_t http_read_chunk(void *ctx, char *buf, size_t buf_sz, int *out_len) {
+    esp_http_client_handle_t client = (esp_http_client_handle_t)ctx;
+    int r = esp_http_client_read(client, buf, buf_sz);
+    if (r < 0) return ESP_FAIL;
+    *out_len = r;
+    return (r == 0) ? ESP_ERR_NOT_FOUND : ESP_OK; // EOF when r == 0
+}
+
+
+static esp_err_t update_web_files_handler(httpd_req_t *req) {
+    // LOG_INFO(TAG, "updating web files");
+    
     esp_http_client_config_t config = {
         .url = URL_UPDATE_WEB,
         .timeout_ms = 5000
     };
     
+    LOG_INFO(TAG, "initializing update_web_files_handler client...");
     esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (client == NULL) {
+    if (!client) {
         LOG_ERR(TAG, ESP_FAIL, "failed to init HTTP client");
         return ESP_FAIL;
     }
 
+    // LOG_INFO(TAG, "opening update_web_files_handler client...");
     esp_err_t err = esp_http_client_open(client, 0);
     if (err != ESP_OK) {
         LOG_ERR(TAG, err, "failed to open HTTP connection: ");
@@ -114,41 +130,70 @@ esp_err_t update_web_files() {
         return err;
     }
 
+    // LOG_INFO(TAG, "fetch update_web_files_handler client headers...");
     int content_length = esp_http_client_fetch_headers(client);
     if (content_length <= 0) {
-        LOG_WARN(TAG, ESP_FAIL, "invalid content length");
+        LOG_WARN(TAG, ESP_FAIL, "unknown or invalid content length");
     }
 
-    FILE *f = fopen(FILE_PATH_HTML_INDEX, "wb");
-    if (!f) {
-        LOG_ERR(TAG, ESP_FAIL, "failed to open file for writing");
-        esp_http_client_cleanup(client);
-        return ESP_FAIL;
+    // LOG_INFO(TAG, "update_web_files_handler update from file stream...");
+    LOG_INFO(TAG, "HTTPD task high-water: %u", uxTaskGetStackHighWaterMark(NULL));
+    err = filesys_update_from_stream(
+        FILE_PATH_HTML_INDEX,
+        FILE_PATH_HTML_INDEX_TMP,
+        (content_length > 0) ? content_length : 0,
+        http_read_chunk,
+        client
+    );
+    LOG_INFO(TAG, "closing update_web_files_handler client...");
+    esp_http_client_close(client);      // call regardless of error
+    LOG_INFO(TAG, "cleaning up update_web_files_handler client...");
+    esp_http_client_cleanup(client);    // call regardless of error
+    if (err != ESP_OK) {                // check error after close and cleanup
+        LOG_ERR(TAG, err, "update_web_files failed");
+        return err; 
     }
-
-    char buffer[512];
-    int data_read;
-    while ((data_read = esp_http_client_read(client, buffer, sizeof(buffer))) > 0) {
-        fwrite(buffer, 1, data_read, f);
-    }
-
-    fclose(f);
-    esp_http_client_cleanup(client);
 
     size_t sz = 0;
-    if (storage_check_file(FILE_PATH_HTML_INDEX, &sz) != ESP_OK) {
+    if (filesys_check_file(FILE_PATH_HTML_INDEX, &sz) != ESP_OK) {
         LOG_ERR(TAG, ESP_FAIL, "verification failed for %s", FILE_PATH_HTML_INDEX);
         return ESP_FAIL;
     }
     LOG_INFO(TAG, "verified %s exists, size=%u bytes", FILE_PATH_HTML_INDEX, (unsigned)sz);
     LOG_INFO(TAG, "file downloaded and saved to %s", FILE_PATH_HTML_INDEX);
+    
+    if (get_wifi_state() == WIFI_UI_CONNECTED) set_portal_phase(PORTAL_STA_MODE);
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/");
+    httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 
 }
-
 static const httpd_uri_t update_web_uri     = {.uri     = "/api/update_web", 
     .method = HTTP_GET, 
-    .handler = update_web_files,
+    .handler = update_web_files_handler,
+    .user_ctx = NULL
+};
+
+static esp_err_t clear_web_handler(httpd_req_t *req) {
+    esp_err_t err = filesys_delete(FILE_PATH_HTML_INDEX);
+    if (err == ESP_OK) {
+        wifi_ui_state_t wfs = get_wifi_state();
+        if (wfs == WIFI_UI_CONNECTING) set_portal_phase(PORTAL_CONNECTING);
+        else if (wfs == WIFI_UI_CONNECTED) set_portal_phase(PORTAL_CONNECTED);
+
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "/");
+        httpd_resp_send(req, NULL, 0); 
+    } else {
+        httpd_resp_set_status(req, HTTPD_500);
+        httpd_resp_sendstr(req, "{\"ok\":false}");
+    }
+    return ESP_OK;
+}
+httpd_uri_t clear_web_uri                   = {.uri = "/api/clear_web",
+    .method = HTTP_GET,
+    .handler = clear_web_handler,
     .user_ctx = NULL
 };
 
@@ -283,13 +328,16 @@ httpd_uri_t catch_all_uri               = {.uri       = "/*",
 esp_err_t home_page_handler(httpd_req_t *req) {
     LOG_INFO(TAG, "HOME PAGE HANDLER");
     portal_ui_phase_t p = get_portal_phase();
+    LOG_INFO(TAG, "portal_ui_phase_t(%s)", portal_phase_to_str(p));
     if (p == PORTAL_CONNECTING || p == PORTAL_CONNECTED) {
         return serve_connecting_page(req);
     }
     
     // Otherwise serve home page 
     FILE *f = fopen(FILE_PATH_HTML_INDEX, "rb");
-    if (f) {
+    if (!f) {
+        LOG_ERR(TAG, ESP_FAIL, "failed to open %s (errno=%d)", FILE_PATH_HTML_INDEX, errno);
+    } else {
         httpd_resp_set_type(req, "text/html");
         char buf[1024]; 
         size_t n;
@@ -321,6 +369,7 @@ esp_err_t register_route(const httpd_uri_t *uri_handler) {
 
 esp_err_t start_webserver(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.stack_size = 8192; // bump from default 4096 to 8192 cause I'm the effking boss applesauce
     config.max_uri_handlers = 16;
 
     ESP_ERROR_CHECK(httpd_start(&server, &config));
@@ -338,6 +387,7 @@ esp_err_t start_webserver(void) {
     register_route(&status_uri);
     register_route(&connect_uri);
     register_route(&update_web_uri);
+    register_route(&clear_web_uri);
 
     // Home
     register_route(&catch_all_uri);
@@ -346,3 +396,84 @@ esp_err_t start_webserver(void) {
     return ESP_OK;
 }
 
+
+
+
+
+// esp_err_t update_web_files() {
+//     esp_http_client_config_t config = {
+//         .url = URL_UPDATE_WEB,
+//         .timeout_ms = 5000
+//     };
+    
+//     esp_http_client_handle_t client = esp_http_client_init(&config);
+//     if (!client) {
+//         LOG_ERR(TAG, ESP_FAIL, "failed to init HTTP client");
+//         return ESP_FAIL;
+//     }
+
+//     esp_err_t err = esp_http_client_open(client, 0);
+//     if (err != ESP_OK) {
+//         LOG_ERR(TAG, err, "failed to open HTTP connection: ");
+//         esp_http_client_cleanup(client);
+//         return err;
+//     }
+
+//     int content_length = esp_http_client_fetch_headers(client);
+//     if (content_length <= 0) {
+//         LOG_WARN(TAG, ESP_FAIL, "unknown or invalid content length");
+//     }
+
+//     FILE *f = fopen(FILE_PATH_HTML_INDEX, "wb");
+//     if (!f) {
+//         LOG_ERR(TAG, ESP_FAIL, "failed to open temp file for writing");
+//         esp_http_client_close(client);
+//         esp_http_client_cleanup(client);
+//         return ESP_FAIL;
+//     }
+
+//     char buffer[1024];
+//     size_t total_written = 0;
+//     int data_read;
+//     while ((data_read = esp_http_client_read(client, buffer, sizeof(buffer))) > 0) {
+//         size_t w = fwrite(buffer, 1, data_read, f);
+//         total_written += w;
+
+//         if(w != (size_t)data_read) {
+//             LOG_ERR(TAG, ESP_FAIL, "partial write detected");
+//             fclose(f);
+//             unlink(FILE_PATH_HTML_INDEX_TMP);
+//             esp_http_client_close(client);
+//             esp_http_client_cleanup(client);
+//             return ESP_FAIL;
+//         }
+//     }
+
+//     fflush(f);
+//     fsync(f);
+//     fclose(f);
+
+//     if (content_length > 0 
+//     &&  total_written != (size_t)content_length
+//     ) {
+//         LOG_WARN(TAG, ESP_FAIL, "size mismatch: wrote=%u expected=%d", 
+//             (unsigned)total_written, content_length);
+//         // TODO: ABORT & CLEANUP...
+//     }
+
+//     if (rename(FILE_PATH_HTML_INDEX_TMP, FILE_PATH_HTML_INDEX) != 0) {
+//         LOG_ERR(TAG, ESP_FAIL, "atomic rename failed");
+//         unlink(FILE_PATH_HTML_INDEX_TMP);
+//         return ESP_FAIL;
+//     }
+
+//     size_t sz = 0;
+//     if (filesys_check_file(FILE_PATH_HTML_INDEX, &sz) != ESP_OK) {
+//         LOG_ERR(TAG, ESP_FAIL, "verification failed for %s", FILE_PATH_HTML_INDEX);
+//         return ESP_FAIL;
+//     }
+//     LOG_INFO(TAG, "verified %s exists, size=%u bytes", FILE_PATH_HTML_INDEX, (unsigned)sz);
+//     LOG_INFO(TAG, "file downloaded and saved to %s", FILE_PATH_HTML_INDEX);
+//     return ESP_OK;
+
+// }

@@ -17,8 +17,11 @@ ESP_EVENT_DECLARE_BASE(NET_EVENT);
 typedef enum {
 // *** Wi-Fi lifecycle ***********************
 
+    // - WIFI_EVENT_SCAN_DONE -> wifi_event_sta_scan_done_t -> esp_wifi_types_generic.h
+    NET_EVENT_WIFI_SCAN_DONE = 1,
+
     // - WIFI_EVENT_STA_START ->  NULL -> esp_wifi_types_generic.h
-    NET_EVENT_WIFI_STA_START = 1,
+    NET_EVENT_WIFI_STA_START,
 
     // - WIFI_EVENT_STA_STOP -> NULL -> esp_wifi_types_generic.h
     NET_EVENT_WIFI_STA_STOP,
