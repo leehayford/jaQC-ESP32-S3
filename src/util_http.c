@@ -3,11 +3,13 @@
 #include "util_net_events.h"
 #include "util_wifi.h"
 #include "util_html_fb.h"
+#include "util_filesys.h"
 
 #include "esp_wifi.h"
 #include "esp_http_server.h"
 #include "esp_http_client.h"
 #include "esp_spiffs.h"
+#include "esp_timer.h"
 
 #include "cJSON.h"
 #include <string.h>
@@ -91,7 +93,8 @@ httpd_uri_t captive_msft_redirect_uri   = {.uri     = "/redirect",
 
 
 const char *FILE_PATH_HTML_INDEX = "/storage/index.html";
-const char *URL_UPDATE_WEB = "http://10.0.0.233:8013/api/jaqc/update_web/index.html";
+// const char *URL_UPDATE_WEB = "http://10.0.0.233:8013/api/jaqc/update_web/index.html"; // Home
+const char *URL_UPDATE_WEB = "http://192.168.1.165:8013/api/jaqc/update_web/index.html"; // Work
 esp_err_t update_web_files() {
     esp_http_client_config_t config = {
         .url = URL_UPDATE_WEB,
@@ -116,7 +119,7 @@ esp_err_t update_web_files() {
         LOG_WARN(TAG, ESP_FAIL, "invalid content length");
     }
 
-    FILE *f = fopen(FILE_PATH_HTML_INDEX, "w");
+    FILE *f = fopen(FILE_PATH_HTML_INDEX, "wb");
     if (!f) {
         LOG_ERR(TAG, ESP_FAIL, "failed to open file for writing");
         esp_http_client_cleanup(client);
@@ -131,10 +134,23 @@ esp_err_t update_web_files() {
 
     fclose(f);
     esp_http_client_cleanup(client);
+
+    size_t sz = 0;
+    if (storage_check_file(FILE_PATH_HTML_INDEX, &sz) != ESP_OK) {
+        LOG_ERR(TAG, ESP_FAIL, "verification failed for %s", FILE_PATH_HTML_INDEX);
+        return ESP_FAIL;
+    }
+    LOG_INFO(TAG, "verified %s exists, size=%u bytes", FILE_PATH_HTML_INDEX, (unsigned)sz);
     LOG_INFO(TAG, "file downloaded and saved to %s", FILE_PATH_HTML_INDEX);
     return ESP_OK;
 
 }
+
+static const httpd_uri_t update_web_uri     = {.uri     = "/api/update_web", 
+    .method = HTTP_GET, 
+    .handler = update_web_files,
+    .user_ctx = NULL
+};
 
 static esp_err_t status_get_handler(httpd_req_t *req) {
    
@@ -150,7 +166,12 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
     );
 
     httpd_resp_set_type(req, "application/json");
-    return httpd_resp_send(req, json, n);
+    esp_err_t err = httpd_resp_send(req, json, n);
+    if (err == ESP_OK) {
+        LOG_INFO(TAG, "firing NET_EVENT_WIFI_STATUS_SERVED...");
+        esp_event_post(NET_EVENT, NET_EVENT_WIFI_STATUS_SERVED, NULL, 0, portMAX_DELAY);
+    }
+    return err;
 }
 static const httpd_uri_t status_uri     = {.uri     = "/api/status", 
     .method = HTTP_GET, 
@@ -260,6 +281,7 @@ httpd_uri_t catch_all_uri               = {.uri       = "/*",
 
 // Home page... what else can I say?
 esp_err_t home_page_handler(httpd_req_t *req) {
+    LOG_INFO(TAG, "HOME PAGE HANDLER");
     portal_ui_phase_t p = get_portal_phase();
     if (p == PORTAL_CONNECTING || p == PORTAL_CONNECTED) {
         return serve_connecting_page(req);
@@ -315,6 +337,7 @@ esp_err_t start_webserver(void) {
     register_route(&scan_uri);
     register_route(&status_uri);
     register_route(&connect_uri);
+    register_route(&update_web_uri);
 
     // Home
     register_route(&catch_all_uri);

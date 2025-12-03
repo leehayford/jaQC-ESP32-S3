@@ -10,9 +10,9 @@ extern "C" {
 #endif
 
 
-
 esp_err_t filesys_init(void);
 
+esp_err_t storage_check_file(const char *path, size_t *out_size);
 
 
 #ifdef __cplusplus

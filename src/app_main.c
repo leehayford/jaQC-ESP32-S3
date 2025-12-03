@@ -184,7 +184,7 @@ void app_main(void) {
             
         }
 
-        if (count % 20 == 0)
+        if (count % 60 == 0)
             LOG_INFO(TAG, "WIFI Status %s", wifi_state_to_str(wifi_state));
     }
 }

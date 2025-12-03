@@ -11,10 +11,8 @@
 extern "C" {
 #endif
 
-// Bits for our local eventgroup
-#define     WIFI_BIT_STA_GOT_IP     (1<<0)
-#define     WIFI_BIT_STA_FAILED     (1<<1)
-#define     WIFI_WAIT_FOR_IP_ms     5000
+#define     AP_GRACE_ms         3000
+#define     AP_GRACE_SHORT_ms   250
 
 typedef enum {
     WIFI_UI_IDLE = 0,

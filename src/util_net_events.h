@@ -35,8 +35,17 @@ typedef enum {
     // - WIFI_EVENT_STA_DISCONNECTED -> wifi_event_sta_disconnected_t -> esp_wifi_types_generic.h
     NET_EVENT_WIFI_STA_DISCONNECTED,
 
+    // Fired when /api/status responds successfully 
+    // BESPOKE -> NULL -> util_http.c 
+    NET_EVENT_WIFI_STATUS_SERVED,   
+    
+    // NET_EVENT_WIFI_AP_GRACE_EXPIRE, // Optional: if you want to signal timer expiry
+
     // - WIFI_EVENT_AP_START -> NULL -> esp_wifi_types_generic.h
     NET_EVENT_WIFI_AP_START,
+
+    // - WIFI_EVENT_AP_STOP -> NULL -> esp_wifi_types_generic.h
+    NET_EVENT_WIFI_AP_STOP,
 
     // - WIFI_EVENT_AP_STACONNECTED -> wifi_event_ap_staconnected_t -> esp_wifi_types_generic.h
     NET_EVENT_WIFI_AP_STACONNECTED,

@@ -67,6 +67,13 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
             break;
         }
 
+        case WIFI_EVENT_AP_STOP: {
+
+            esp_event_post(NET_EVENT, NET_EVENT_WIFI_AP_STOP,  NULL, 0, portMAX_DELAY);
+            LOG_INFO(TAG, "access point stopped");
+            break;
+        }
+
         case WIFI_EVENT_AP_STACONNECTED: {
 
             esp_event_post(NET_EVENT, NET_EVENT_WIFI_AP_STACONNECTED, 

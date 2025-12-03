@@ -31,6 +31,8 @@ static esp_netif_ip_info_t s_ip;
 static volatile wifi_ui_state_t s_state = WIFI_UI_IDLE;
 static portal_ui_phase_t s_phase = PORTAL_SELECT;
 
+// Access point shutdown grace period timer, started upon NET_EVENT_WIFI_STA_GOT_IP
+static esp_timer_handle_t s_ap_grace_timer = NULL; 
 
 const char* get_wifi_ssid() { return s_ssid; }
 const char* get_wifi_pass() { return s_pass; }
@@ -93,11 +95,19 @@ static void wifi_worker_task(void *arg) {
                 case NET_WORK_AP_DISABLE: {
                     
                     LOG_INFO(TAG, "disabling access point...");
-                    vTaskDelay(pdMS_TO_TICKS(1000));
-                    err = esp_wifi_set_mode(WIFI_MODE_STA);
-                    if (err != ESP_OK) LOG_ERR(TAG, err, "set wifi mode to STA failed:");
-                    else LOG_INFO(TAG, "access point disabled (station-only mode enabled)");
 
+                    wifi_mode_t mode;
+                    err = esp_wifi_get_mode(&mode);
+                    if (err != ESP_OK) {
+                         LOG_ERR(TAG, err, "get current wifi mode failed:");
+                    } 
+                    else if (mode == WIFI_MODE_STA) {
+                        LOG_INFO(TAG, "AP already disabled (STA-only mode)");
+                    } else {
+                        err = esp_wifi_set_mode(WIFI_MODE_STA);
+                        if (err != ESP_OK) LOG_ERR(TAG, err, "set wifi mode to STA failed:");
+                        else LOG_INFO(TAG, "AP disabled (STA-only mode enabled)");
+                    }
                     break;
                 }
 
@@ -318,9 +328,17 @@ static void on_wifi_sta_connected(void *arg, esp_event_base_t base, int32_t id, 
 
 static void on_wifi_sta_disconnected(void* arg, esp_event_base_t base, int32_t id, void *data) {
     
-    LOG_INFO(TAG, "STA disconnected");
+    if (esp_timer_is_active(s_ap_grace_timer)) {
+        // stop s_ap_grace_timer immediately to ensure access point remains active 
+        ESP_ERROR_CHECK(esp_timer_stop(s_ap_grace_timer));
+        LOG_WARN(TAG, ESP_FAIL, "unexpected STA disconnect");
+    }
+
     wifi_event_sta_disconnected_t *e = (wifi_event_sta_disconnected_t *)data;
-    LOG_INFO(TAG, "STA disconnected -> reason: %d", e->reason);
+    LOG_INFO(TAG, 
+        "STA disconnected -> reason: %d (see: esp_wifi_types_generic.h -> wifi_err_reason_t)", 
+        e->reason
+    );
 
     if (e->reason == WIFI_REASON_AUTH_FAIL 
     ||  e->reason == WIFI_REASON_HANDSHAKE_TIMEOUT
@@ -341,6 +359,13 @@ static void on_wifi_sta_disconnected(void* arg, esp_event_base_t base, int32_t i
     wifi_worker_post(NET_WORK_CONNECT, NULL); // auto-reconnect
 }
 
+// AP shutdown grace period timer callback; 
+static void ap_grace_timer_cb(void *arg) {
+    // Post to worker queue, shutdown AP / enable STA only mode
+    LOG_INFO(TAG, "AP shutdown grace period expired → disabling AP...");
+    wifi_worker_post(NET_WORK_AP_DISABLE, NULL);
+}
+
 static void on_wifi_sta_got_ip(void* arg, esp_event_base_t base, int32_t id, void *data) {
     
     ip_event_got_ip_t *e = (ip_event_got_ip_t*)data;
@@ -355,7 +380,17 @@ static void on_wifi_sta_got_ip(void* arg, esp_event_base_t base, int32_t id, voi
     set_wifi_state(WIFI_UI_CONNECTED);
     set_portal_phase(PORTAL_CONNECTED);
 
-    wifi_worker_post(NET_WORK_AP_DISABLE, NULL);
+    LOG_INFO(TAG, "STA got IP → starting AP shutdown grace period (%ums)", AP_GRACE_ms);
+    ESP_ERROR_CHECK(esp_timer_start_once(s_ap_grace_timer, AP_GRACE_ms * 1000));
+}
+
+static void on_wifi_status_served(void *arg, esp_event_base_t base, int32_t id, void *data) {
+    // If AP grace timer is active, shorten it; no use standin' about like one o'clock half struck
+    if (esp_timer_is_active(s_ap_grace_timer)) {
+        LOG_INFO(TAG, "Status served → shortening AP shutdown grace period to %ums", AP_GRACE_SHORT_ms);
+        ESP_ERROR_CHECK(esp_timer_stop(s_ap_grace_timer));
+        ESP_ERROR_CHECK(esp_timer_start_once(s_ap_grace_timer, AP_GRACE_SHORT_ms * 1000)); // short tail
+    }
 }
 
 
@@ -396,11 +431,20 @@ esp_err_t wifi_init(char prefix[10], char ssid[33], char pass[65]) {
 
     wifi_worker_init();
 
-    // TODO: NET_EVENT handlers
+    esp_timer_create_args_t targs = {
+        .callback = ap_grace_timer_cb,
+        .arg = NULL,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "ap_grace"
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&targs, &s_ap_grace_timer));
+
+    // NET_EVENT handlers
     net_events_subscribe(NET_EVENT_WIFI_STA_START, on_wifi_sta_start, NULL);
     net_events_subscribe(NET_EVENT_WIFI_STA_CONNECTED, on_wifi_sta_connected, NULL);
     net_events_subscribe(NET_EVENT_WIFI_STA_DISCONNECTED, on_wifi_sta_disconnected, NULL);
     net_events_subscribe(NET_EVENT_WIFI_STA_GOT_IP, on_wifi_sta_got_ip, NULL);
+    net_events_subscribe(NET_EVENT_WIFI_STATUS_SERVED, on_wifi_status_served, NULL);
     
     net_events_subscribe(NET_EVENT_WIFI_AP_START, on_wifi_ap_start, NULL);
     net_events_subscribe(NET_EVENT_WIFI_AP_STACONNECTED, on_wifi_ap_staconnected, NULL);
