@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-#define LOG_BUFFER 256
+#define LOG_BUFFER 288
 
 void log_err(const char *TAG, const char *context, esp_err_t err);
 #define LOG_ERR(tag, err, fmt, ...) do { \

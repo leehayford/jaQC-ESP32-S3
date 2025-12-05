@@ -11,6 +11,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <dirent.h>
+#include <errno.h>
+#include "cJSON.h"
+
+
 static const char *TAG = "UTIL_FILESYS";
 
 
@@ -24,28 +29,27 @@ static esp_err_t filesys_sha256_stream_md_init(mbedtls_md_context_t *md) {
     return ESP_OK;
 }
 
-static esp_err_t filesys_sha256_stream_md_update(mbedtls_md_context_t *md,
-                                                 const unsigned char *data, size_t len) {
+static esp_err_t filesys_sha256_stream_md_update(mbedtls_md_context_t *md,const unsigned char *data, size_t len) {
     if (!md || (!data && len)) return ESP_ERR_INVALID_ARG;
     if (mbedtls_md_update(md, data, len) != 0) return ESP_FAIL;
     return ESP_OK;
 }
 
-static esp_err_t filesys_sha256_stream_md_finish(mbedtls_md_context_t *md,
-                                                 unsigned char out_hash[32]) {
+static esp_err_t filesys_sha256_stream_md_finish(mbedtls_md_context_t *md, unsigned char out_hash[32]) {
     if (!md || !out_hash) return ESP_ERR_INVALID_ARG;
     if (mbedtls_md_finish(md, out_hash) != 0) return ESP_FAIL;
     mbedtls_md_free(md);
     return ESP_OK;
 }
 
-
 esp_err_t filesys_update_from_stream(
     const char *final_path,
     const char *temp_path,
     size_t expected_len,
     esp_err_t (*read_chunk)(void *ctx, char *buf, size_t buf_sz, int *out_len),
-    void *ctx
+    void *ctx,
+    const unsigned char *expected_hash, // may be NULL
+    bool verify                         // false -> skip
 ) {
     if (!final_path || !temp_path || !read_chunk) return ESP_ERR_INVALID_ARG;
 
@@ -65,12 +69,11 @@ esp_err_t filesys_update_from_stream(
         return ESP_ERR_NO_MEM;
     }
 
-    
     // Start MD (SHA-256)
     mbedtls_md_context_t md;
     ESP_ERROR_CHECK_WITHOUT_ABORT(filesys_sha256_stream_md_init(&md));  // don't abort, handle errors
 
-    LOG_INFO(TAG, "HTTPD task high-water: %u", uxTaskGetStackHighWaterMark(NULL));
+    // LOG_INFO(TAG, "HTTPD task high-water: %u", uxTaskGetStackHighWaterMark(NULL));
     size_t total_written = 0;
     int chunk_len = 0;
 
@@ -132,7 +135,16 @@ esp_err_t filesys_update_from_stream(
         unlink(temp_path);
         return ESP_FAIL;
     }
-    log_hash_hex(hash, sizeof(hash));
+    log_hash_hex((const unsigned char *)"server hash", expected_hash, 32);
+    log_hash_hex((const unsigned char *)"local hash", hash, 32);
+
+    if (verify && expected_hash) {
+        if (!hashes_equal(expected_hash, hash)) {
+            LOG_ERR(TAG, ESP_FAIL, "SHA256 mismatch; aborting update");
+            unlink(temp_path);
+            return ESP_FAIL;
+        }
+    }
 
     // Atomic rename (SPIFFS cannot overwrite existing file)
     unlink(final_path); // ignore error if file doesn't exist
@@ -142,15 +154,25 @@ esp_err_t filesys_update_from_stream(
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "update complete: %s (%u bytes)", final_path, (unsigned)total_written);
+    LOG_INFO(TAG, "update complete: %s (%u bytes)", final_path, (unsigned)total_written);
     return ESP_OK;
 }
 
 
+esp_err_t filesys_delete(const char *path) {
+    if (!path) return ESP_ERR_INVALID_ARG;
+    int rc = unlink(path);
+    if (rc != 0) {
+        LOG_ERR(TAG, ESP_FAIL, "unlink failed for %s", path);
+        return ESP_FAIL;
+    }
+    LOG_INFO(TAG, "deleted %s", path);
+    return ESP_OK;
+}
+
+esp_err_t filesys_check_file(const char *path, size_t *out_size) {
 // The Quick and Dirty
 // Check if a file exists at some path, and if that file's size is > 0
-esp_err_t filesys_check_file(const char *path, size_t *out_size) {
-
     struct stat st;
     if (stat(path, &st) != 0) {
         // errno will tell you why (ENOENT etc.)
@@ -173,17 +195,6 @@ esp_err_t filesys_get_info(size_t *out_total, size_t *out_used) {
 
     LOG_INFO(TAG, "SPIFFS info: used=%u bytes, total=%u bytes",
              (unsigned)*out_used, (unsigned)*out_total);
-    return ESP_OK;
-}
-
-esp_err_t filesys_delete(const char *path) {
-    if (!path) return ESP_ERR_INVALID_ARG;
-    int rc = unlink(path);
-    if (rc != 0) {
-        LOG_ERR(TAG, ESP_FAIL, "unlink failed for %s", path);
-        return ESP_FAIL;
-    }
-    LOG_INFO(TAG, "deleted %s", path);
     return ESP_OK;
 }
 
@@ -211,12 +222,109 @@ esp_err_t filesys_sha256(const char *path, unsigned char out_hash[32]) {
 
 }
 
-void log_hash_hex(const unsigned char *hash, size_t len) {
-    char hex[65] = {0};
-    for (size_t i = 0; i < len; ++i) {
-        sprintf(hex + (i * 2), "%02x", hash[i]);
+// --- Write small text atomically ---
+esp_err_t filesys_write_text_atomic(const char *final_path, const char *text) {
+    if (!final_path || !text) return ESP_ERR_INVALID_ARG;
+
+    char tmp[128];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", final_path);
+
+    FILE *f = fopen(tmp, "wb");
+    if (!f) {
+        LOG_ERR(TAG, ESP_FAIL, "open temp for write failed: %s (errno=%d)", tmp, errno);
+        return ESP_FAIL;
     }
-    LOG_INFO(TAG, "SHA256 = \x1b[38;5;200m%s\x1b[0m", hex);
+    size_t len = strlen(text);
+    size_t w   = fwrite(text, 1, len, f);
+    fflush(f);
+    fsync(fileno(f));
+    fclose(f);
+    if (w != len) {
+        LOG_ERR(TAG, ESP_FAIL, "partial write: %u/%u", (unsigned)w, (unsigned)len);
+        unlink(tmp);
+        return ESP_FAIL;
+    }
+    // SPIFFS cannot overwrite existing file, unlink first
+    unlink(final_path);
+    if (rename(tmp, final_path) != 0) {
+        LOG_ERR(TAG, ESP_FAIL, "atomic rename failed: %s -> %s", tmp, final_path);
+        unlink(tmp);
+        return ESP_FAIL;
+    }
+    LOG_INFO(TAG, "wrote text file: %s (%u bytes)", final_path, (unsigned)len);
+    return ESP_OK;
+}
+
+// --- Read whole text file into malloc'ed buffer ---
+esp_err_t filesys_read_text(const char *path, char **out_text, size_t *out_len){
+
+    if (!path || !out_text) return ESP_ERR_INVALID_ARG;
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        LOG_ERR(TAG, ESP_FAIL, "open for read failed: %s (errno=%d)", path, errno);
+        return ESP_FAIL;
+    }
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return ESP_FAIL; }
+    long sz = ftell(f);
+    if (sz < 0) { fclose(f); return ESP_FAIL; }
+    rewind(f);
+
+    char *buf = (char*)malloc((size_t)sz + 1);
+    if (!buf) { fclose(f); return ESP_ERR_NO_MEM; }
+
+    size_t n = fread(buf, 1, (size_t)sz, f);
+    fclose(f);
+    buf[n] = '\0';
+
+    *out_text = buf;
+    if (out_len) *out_len = n;
+    return ESP_OK;
+
+}
+
+// --- Build a JSON array of files in a directory ---
+char* filesys_show_directory(const char *path) {
+    if (!path) return NULL;
+
+    DIR *dir = opendir(path);
+    if (!dir) {
+        LOG_ERR(TAG, ESP_FAIL, "opendir failed: %s (errno=%d)", path, errno);
+        return NULL;
+    }
+
+    cJSON *arr = cJSON_CreateArray();
+    if (!arr) { closedir(dir); return NULL; }
+
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        const char *name = ent->d_name;
+        // Skip . and ..
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+
+        char full[258];
+        snprintf(full, sizeof(full), "%s/%s", path, name);
+
+        struct stat st;
+        if (stat(full, &st) != 0) {
+            // Could be dangling entry; skip but log
+            LOG_WARN(TAG, ESP_FAIL, "stat failed: %s (errno=%d)", full, errno);
+            continue;
+        }
+
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddStringToObject(o, "name", name);
+        cJSON_AddNumberToObject(o, "size", (double)st.st_size);
+        cJSON_AddStringToObject(
+            o, "type",
+            S_ISDIR(st.st_mode) ? "dir" : "file"
+        );
+        cJSON_AddItemToArray(arr, o);
+    }
+    closedir(dir);
+
+    char *json = cJSON_PrintUnformatted(arr);
+    cJSON_Delete(arr);
+    return json; // caller frees
 }
 
 esp_err_t filesys_init(void) {
@@ -245,4 +353,33 @@ esp_err_t filesys_init(void) {
     }
     
     return err;
+}
+
+
+
+void log_hash_hex(const unsigned char *name, const unsigned char *hash, size_t len) {
+    char hex[65] = {0};
+    for (size_t i = 0; i < len; ++i) {
+        sprintf(hex + (i * 2), "%02x", hash[i]);
+    }
+    LOG_INFO(TAG, "SHA256 [%s] = \x1b[38;5;200m%s\x1b[0m", name, hex);
+}
+
+bool hex_to_bytes32(const char *hex, unsigned char out[32]) {
+    if (!hex || !out) return false;
+    size_t len = strlen(hex);
+    if (len != 64) return false;
+    for (size_t i = 0; i < 32; ++i) {
+        unsigned int v;
+        if (sscanf(&hex[i*2], "%2x", &v) != 1) return false;
+        out[i] = (unsigned char)v;
+    }
+    return true;
+}
+
+bool hashes_equal(const unsigned char a[32], const unsigned char b[32]) {
+    // constant-time-ish compare
+    unsigned char acc = 0;
+    for (int i = 0; i < 32; ++i) acc |= (a[i] ^ b[i]);
+    return acc == 0;
 }
