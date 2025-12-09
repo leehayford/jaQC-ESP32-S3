@@ -158,7 +158,6 @@ esp_err_t filesys_update_from_stream(
     return ESP_OK;
 }
 
-
 esp_err_t filesys_delete(const char *path) {
     if (!path) return ESP_ERR_INVALID_ARG;
     int rc = unlink(path);

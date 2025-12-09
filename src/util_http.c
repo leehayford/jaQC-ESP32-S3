@@ -19,6 +19,19 @@ static const char *TAG = "UTIL_HTTP";
 
 static httpd_handle_t server = NULL;
 
+#define FILE_PATH_WEB_MANIFEST "/storage/manifest.json"
+#define FILE_PATH_HTML_INDEX "/storage/index.html"
+
+/* Home URLs */ 
+// #define URL_UPDATE_WEB_ALL  "http://10.0.0.233:8013/api/jaqc/manifest" 
+
+/* Work URLs */ 
+#define URL_UPDATE_WEB_ALL  "http://192.168.1.165:8013/api/jaqc/manifest"  
+
+typedef struct {
+    esp_http_client_handle_t client;
+} http_ctx_t;
+
 // *** Captiv portal stuff **************************************************
 
 esp_err_t serve_connecting_page(httpd_req_t *req) {
@@ -89,21 +102,6 @@ httpd_uri_t captive_msft_redirect_uri   = {.uri     = "/redirect",
 
 // *** END Captiv portal stuff **********************************************
 
-
-
-#define FILE_PATH_WEB_MANIFEST "/storage/manifest.json"
-#define FILE_PATH_HTML_INDEX "/storage/index.html"
-
-/* Home URLs */ 
-// #define URL_UPDATE_WEB_ALL  "http://10.0.0.233:8013/api/jaqc/manifest" 
-
-/* Work URLs */ 
-#define URL_UPDATE_WEB_ALL  "http://192.168.1.165:8013/api/jaqc/manifest"  
-
-
-typedef struct {
-    esp_http_client_handle_t client;
-} http_ctx_t;
 
 static esp_err_t http_read_chunk(void *ctx, char *buf, size_t buf_sz, int *out_len) {
     if (!ctx) return ESP_ERR_INVALID_ARG;
@@ -303,26 +301,6 @@ httpd_uri_t web_files_uri                   = {.uri     = "/api/files",
     .user_ctx= NULL
 };
 
-
-/* OLD */
-/* TODO: Remove after testing manifest-based clear_web_handler */
-/* static esp_err_t clear_web_handler(httpd_req_t *req) {
-    esp_err_t err = filesys_delete(FILE_PATH_HTML_INDEX);
-    if (err == ESP_OK) {
-        wifi_ui_state_t wfs = get_wifi_state();
-        if (wfs == WIFI_UI_CONNECTING) set_portal_phase(PORTAL_CONNECTING);
-        else if (wfs == WIFI_UI_CONNECTED) set_portal_phase(PORTAL_CONNECTED);
-
-        httpd_resp_set_status(req, "302 Found");
-        httpd_resp_set_hdr(req, "Location", "/");
-        httpd_resp_send(req, NULL, 0); 
-    } else {
-        httpd_resp_set_status(req, HTTPD_500);
-        httpd_resp_sendstr(req, "{\"ok\":false}");
-    }
-    return ESP_OK;
-} */
-
 static esp_err_t clear_web_handler(httpd_req_t *req) {
     // Load the last manifest we saved
     char *manifest = NULL;
@@ -361,14 +339,8 @@ static esp_err_t clear_web_handler(httpd_req_t *req) {
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "/");
     httpd_resp_send(req, NULL, 0); 
-    // Respond — you can keep 302 if you prefer
-    // char json[96];
-    // int n = snprintf(json, sizeof(json), "{\"ok\":true,\"deleted\":%d,\"failed\":%d}", deleted, failed);
-    // httpd_resp_set_type(req, "application/json");
-    // httpd_resp_send(req, json, n);
     return ESP_OK;
 }
-
 httpd_uri_t clear_web_uri                   = {.uri     = "/api/clear_web",
     .method = HTTP_GET,
     .handler = clear_web_handler,
