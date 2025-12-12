@@ -1,9 +1,14 @@
 idf_component_register(
     SRCS 
         "app_main.c"
-        "jaqc_admin.c"
+        
+        "app_admin.c"
+        "app_mqtt.c"
+        "app_TLV320ADC5120.c"
+        "driver_TLV320ADC5120.c"
         "model_config.c"
         "model_op_state.c"
+        "model_sample.c"
         "models.c"
         "util_device.c"
         "util_dns.c"
@@ -11,17 +16,21 @@ idf_component_register(
         "util_filesys.c"
         "util_flash.c"
         "util_http.c"
+        "util_mqtt.c"
         "util_net_events.c"
         "util_wifi.c"
     INCLUDE_DIRS
         "."
     REQUIRES 
-        nvs_flash
-        spiffs
-        esp_netif
         esp_event
+        esp_driver_i2c
+        esp_driver_i2s
+        esp_netif
         esp_system
         esp_wifi
         freertos
         log
+        mqtt
+        nvs_flash
+        spiffs
 )

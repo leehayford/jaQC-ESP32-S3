@@ -9,25 +9,27 @@
 extern "C" {
 #endif
 
-#define DEF_SERIAL "0000000000"
-#define DEF_CLASS "000"
+#define DEF_SERIAL "JaQC000000"
+#define DEF_HW_CLASS "000"
 #define DEF_HW_VERSION "000"
-#define DEF_FW_VERSION "9999.9999.9999"
 #define DEF_HW_PREFIX "JaQC"
+#define DEF_FW_VERSION "0.0.0"
+
 #define DEF_WIFI_SSID ""
 #define DEF_WIFI_PASS ""
 #define DEF_AP_MODE true
-#define DEF_MQTT_URI "mqtt://broker.local"
+
+#define DEF_MQTT_URI "mqtt://143.198.50.152"
 #define DEF_MQTT_PORT (int32_t)1883
-#define DEF_MQTT_USER ""
-#define DEF_MQTT_PASS ""
+#define DEF_MQTT_USER "JaQCAPI"
+#define DEF_MQTT_PASS "im2#1*2n2"
 
 typedef struct {
     char serial[11];
     char hw_class[4];
     char hw_version[4];
-    char fw_version[15];
     char hw_prefix[10];
+    char fw_version[15];
 
     char wifi_ssid[33];
     char wifi_pass[65];
@@ -37,6 +39,8 @@ typedef struct {
     int32_t mqtt_port;
     char mqtt_user[64];
     char mqtt_pass[64];
+
+    uint32_t sample_rate_hz;
 
 } cfg_t;
 

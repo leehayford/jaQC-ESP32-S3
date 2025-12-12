@@ -67,7 +67,7 @@ void cfg_defaults(cfg_t *cfg) {
     memset(cfg, 0, sizeof(cfg_t)); // Clear everything
 
     strncpy(cfg->serial, DEF_SERIAL, sizeof(cfg->serial));
-    strncpy(cfg->hw_class, DEF_CLASS, sizeof(cfg->hw_class));
+    strncpy(cfg->hw_class, DEF_HW_CLASS, sizeof(cfg->hw_class));
     strncpy(cfg->hw_version, DEF_HW_VERSION, sizeof(cfg->hw_version));
     strncpy(cfg->fw_version, DEF_FW_VERSION, sizeof(cfg->fw_version));
     strncpy(cfg->hw_prefix, DEF_HW_PREFIX, sizeof(cfg->hw_prefix));

@@ -1,4 +1,4 @@
-#include "jaqc_admin.h"
+#include "app_admin.h"
 #include "models.h"
 #include "model_config.h"
 

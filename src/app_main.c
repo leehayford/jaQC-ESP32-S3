@@ -1,16 +1,20 @@
-#include "jaqc_admin.h"
+#include "app_admin.h"
+#include "app_TLV320ADC5120.h"
+#include "driver_TLV320ADC5120.h"
 #include "models.h"
 #include "util_err.h"
 #include "util_filesys.h"
 #include "util_wifi.h"
 #include "util_http.h"
+#include "util_mqtt.h"
 
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-// jaqc_io.h/.c
+// TODO: move to app_io.h/.c
 #include "driver/gpio.h"
 
 void io_init(uint64_t pin_def) {
@@ -25,7 +29,7 @@ void io_init(uint64_t pin_def) {
 }
 
 
-// jaqc_http.h/.c
+// TODO: move to app_http.h/.c
 #include "esp_http_server.h"
 static esp_err_t whatever_get_handler(httpd_req_t *req) {
    
@@ -53,7 +57,7 @@ static const httpd_uri_t whatever_uri = {
 
 static const char *TAG = "JAQC";
 
-/* DEBUG *******************************************************************/
+/* DEBUG / TEST *******************************************************************/
 
 // extern cfg_t s_cfg;
 // extern ops_t s_ops;
@@ -117,11 +121,55 @@ void confirm_start_webserver() {
 
 }
 
+static bool mqtt_initialized = false;
+void confirm_start_mqtt() {
+    char mqtt_id[23] = "";
+    char prefix[9] = "JAQC";
+    make_mqtt_client_id(prefix, mqtt_id);
+    LOG_INFO(TAG, "MQTT client id: %s", mqtt_id);
+    util_mqtt_cfg_t cfg = {
+        .uri = "mqtt://143.198.50.152:1883",
+        .client_id = mqtt_id, // "esp32s3-" /* + mac suffix if desired */,
+        .username = "JaQCAPI", 
+        .password = "im2#1*2n2",
+        .clean_session = true, 
+        .keepalive_sec = 60,
+        .lwt_topic = "devices/esp32s3/status",
+        .lwt_msg   = "offline", .lwt_qos = 1, .lwt_retain = true,
+    };
+    esp_err_t err = util_mqtt_init(&cfg);
+    if (err != ESP_OK) {
+        LOG_ERR(TAG, err, "mqtt test failed...");
+    }
+}
 
-/* END DEBUG ***************************************************************/
+void confirm_ADC_start() {
+    i2c_scan();
+    esp_err_t err = app_tlv_start();
+    if (err) {
+        LOG_ERR(TAG, err, "adc initialization failed");
+    }
+    LOG_INFO(TAG, "adc initialization OK");
+}
+
+/* END DEBUG / TEST ***************************************************************/
 
 
 void app_main(void) {
+
+    /*** WATCHDOG STUFF *************************************************/
+    // Disable any auto-init
+    esp_task_wdt_deinit();
+
+    // Reconfigure: 15s timeout, DO NOT monitor idle cores
+    esp_task_wdt_config_t cfg = {
+        .timeout_ms     = 15000,
+        .idle_core_mask = 0,        // 0 => don't watch IDLE0/IDLE1
+        .trigger_panic  = true
+    };
+    esp_task_wdt_init(&cfg);
+
+    /*** END WATCHDOG STUFF *********************************************/
 
     // Some delay so I can watch the startuip log
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -133,10 +181,6 @@ void app_main(void) {
 
     // Initialize file system
     ESP_ERROR_CHECK(filesys_init()); // confirm_filesys_init();
-
-    /* TODO: REMOVE util_tcpip.h/.c & below after util_net_events.c testing */
-    // // Initialize TCP/IP stack 
-    // ESP_ERROR_CHECK(tcpip_init_once()); // confirm_tcpip_init();
 
     // Initialize TCP/IP stack & default event loop for Wi-Fi & IP events
     // ESP_ERROR_CHECK(net_events_init_once());
@@ -150,12 +194,13 @@ void app_main(void) {
     // ESP_ERROR_CHECK(web_serve());
     confirm_start_webserver();
 
-
     // Connect to MQTT broker & subscribe to .../cmd, .../diag
     // ESP_ERROR_CHECK(mqtt_connect()); 
 
     io_init(PIN_OUT_WIFI_BLUE_LED);
     io_init(PIN_OUT_WIFI_RED_LED);
+
+    confirm_ADC_start();
 
     int count = 0;
     // Do tasks
@@ -184,7 +229,15 @@ void app_main(void) {
             
         }
 
-        if (count % 60 == 0)
+        if (count % 10 == 0){
             LOG_INFO(TAG, "WIFI Status %s", wifi_state_to_str(wifi_state));
+            
+            if(mqtt_initialized) {
+                util_mqtt_publish_str("jaqc/sig/test", wifi_state_to_str(wifi_state), /*qos*/0, /*retain*/false);
+            } else if (wifi_state == WIFI_UI_CONNECTED && !mqtt_initialized) {
+                confirm_start_mqtt();
+                mqtt_initialized = true;
+            }
+        }
     }
 }

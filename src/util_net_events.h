@@ -76,17 +76,13 @@ typedef enum {
     // NOT IMPLEMENTED - ??? -> NULL -> esp_association_unknown
     NET_EVENT_ETH_DISCONNECTED,
 
+// *** MQTTT lifecycle **************************
 
-// *** Optional: app-layer events *****************
-    
-    // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
-    NET_EVENT_TIME_SYNC_OK,
-    
-    // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
-    NET_EVENT_TIME_SYNC_FAIL,
-    
     // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
     NET_EVENT_MQTT_START,
+
+    // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
+    NET_EVENT_MQTT_STOP,
     
     // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
     NET_EVENT_MQTT_CONNECTED,
@@ -96,6 +92,23 @@ typedef enum {
     
     // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
     NET_EVENT_MQTT_RECONNECTING,
+    
+    // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
+    NET_EVENT_MQTT_SUBSCRIBED,
+    
+    // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
+    NET_EVENT_MQTT_PUBLISHED,
+    
+    // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
+    NET_EVENT_MQTT_DATA,
+
+// *** Optional: app-layer events *****************
+    
+    // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
+    NET_EVENT_TIME_SYNC_OK,
+    
+    // NOT IMPLEMENTED - ORIGIN -> NULL -> esp_association_none
+    NET_EVENT_TIME_SYNC_FAIL,
 
 } net_event_id_t;
 
