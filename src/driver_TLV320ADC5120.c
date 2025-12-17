@@ -172,6 +172,12 @@ static esp_err_t tlv_cfg_device(void) {
    err |= TLV_WR(0x07, 0x70); // 0111 0000 - 0x70 - I2S - 32 bit slot
 //    err |= TLV_WR(0x07, 0x60); // 0011 0000 - 0x70 - TDM - 32 bit slot
     
+    /* 0x0B - ASI_CH1 Register
+    7-6 00          RESERVED; Write only reset value (00b)
+    5-0 000000      Ch1 is registered to I2S left slot 0
+    */ 
+   err |= TLV_WR(0x0B, 0x00); // 0000 0000 - 0x00
+
     /* 0x0C - ASI_CH2 Register
     7-6 00          RESERVED; Write only reset value (00b)
     5-0 000001      Ch2 is registered to I2S left slot 1
@@ -341,7 +347,7 @@ static esp_err_t i2s_setup(void) {
     );
     // Use 32-bit slots for easy alignment on the ESP side; make WS width match the slot width.
     slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
-    slot_cfg.ws_width       = 32;
+    slot_cfg.ws_width       = 24;
     slot_cfg.bit_shift = true;   // Philips I²S one-bit delay
 
     // Standard clock config
@@ -386,7 +392,7 @@ static void reader_task(void *arg) {
     while (1) {
         // Read exactly one DMA frame (512 bytes) every time we're called
         esp_err_t r = i2s_channel_read(s_rx_chan, s_ring.dma_buf[s_ring.wr_idx], 
-            TLV_DMA_BUF_SZ, &bytes_read, pdMS_TO_TICKS(50));
+            TLV_DMA_BUF_SZ, &bytes_read, pdMS_TO_TICKS(200));
 
         if (r == ESP_OK && bytes_read == TLV_DMA_BUF_SZ) {
             s_ring.wr_idx = (s_ring.wr_idx + 1) % TLV_DMA_BUF_COUNT;
@@ -396,7 +402,7 @@ static void reader_task(void *arg) {
             }
             taskYIELD();
         } else {
-            LOG_WARN(TAG, ESP_ERR_NOT_FINISHED, "i2s read err=%d bytes=%u", r, (unsigned)bytes_read);
+            LOG_WARN(TAG, r, "i2s read err=%d bytes=%u", r, (unsigned)bytes_read);
             taskYIELD();
         }
     }

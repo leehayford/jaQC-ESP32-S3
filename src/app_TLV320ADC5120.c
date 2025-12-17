@@ -106,13 +106,14 @@ static void sampler_task(void *arg) {
 }
 
 static void publisher_task(void *arg) {
-    LOG_INFO(TAG, "publisher_task started");
+    LOG_INFO(TAG, "publisher_task starting (pre-yield)");
+    vTaskDelay(1);
     // subscribe and feed TWDT
     esp_task_wdt_add(NULL);
 
+    LOG_INFO(TAG, "publisher_task started");
     uint8_t block[512];
     uint32_t deq = 0, to = 0;  /* TODO: Remove after debug */
-
 
     for (;;) {
         if (xQueueReceive(s_publish_q, block, pdMS_TO_TICKS(2000)) == pdPASS) {
@@ -142,8 +143,10 @@ static void startup_task(void *arg) {
 
     // Start the publisher task on core 1, lower priority (2)
     // This task will do the heavier JSON/Base64/MQTT work.
-    rc = xTaskCreatePinnedToCore(publisher_task, "tlv_pub", 4096, NULL, 2, NULL, 1);
+    rc = xTaskCreatePinnedToCore(publisher_task, "tlv_pub", 6144, NULL, 2, NULL, 0);
     LOG_INFO(TAG, "publisher_task create rc=%ld", (long)rc);
+
+    // vTaskDelay(pdMS_TO_TICKS(1));
 
     vTaskDelete(NULL);
 }
@@ -172,6 +175,7 @@ esp_err_t app_tlv_start(void) {
     if (!s_publish_q) {
         s_publish_q = xQueueCreate(/*depth*/16, /*item size*/512);
     }
+    // configASSERT(s_publish_q != NULL);
     
     // Signal tasks to run BEFORE creating them
     s_running = true;

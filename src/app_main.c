@@ -81,13 +81,6 @@ void confirm_filesys_init() {
     }
 }
 
-// void confirm_tcpip_init() {
-//     esp_err_t err = tcpip_init_once();
-//     if (err != ESP_OK) {
-//         LOG_ERR(TAG, err, "tcp/ip test failed...");
-//     }
-// }
-
 #include "util_net_events.h"
 void confirm_net_events_init() {
     esp_err_t err = net_events_init_once();
@@ -121,23 +114,30 @@ void confirm_start_webserver() {
 
 }
 
+#include "app_mqtt.h"
 static bool mqtt_initialized = false;
 void confirm_start_mqtt() {
-    char mqtt_id[23] = "";
-    char prefix[9] = "JAQC";
-    make_mqtt_client_id(prefix, mqtt_id);
-    LOG_INFO(TAG, "MQTT client id: %s", mqtt_id);
-    util_mqtt_cfg_t cfg = {
-        .uri = "mqtt://143.198.50.152:1883",
-        .client_id = mqtt_id, // "esp32s3-" /* + mac suffix if desired */,
-        .username = "JaQCAPI", 
-        .password = "im2#1*2n2",
-        .clean_session = true, 
-        .keepalive_sec = 60,
-        .lwt_topic = "devices/esp32s3/status",
-        .lwt_msg   = "offline", .lwt_qos = 1, .lwt_retain = true,
-    };
-    esp_err_t err = util_mqtt_init(&cfg);
+    // char mqtt_id[23] = "";
+    // char prefix[9] = "JAQC";
+    // make_mqtt_client_id(prefix, mqtt_id);
+    // LOG_INFO(TAG, "MQTT client id: %s", mqtt_id);
+    // util_mqtt_cfg_t cfg = {
+    //     .uri = "mqtt://143.198.50.152:1883",
+    //     .client_id = mqtt_id, // "esp32s3-" /* + mac suffix if desired */,
+    //     .username = "JaQCAPI", 
+    //     .password = "im2#1*2n2",
+    //     .clean_session = true, 
+    //     .keepalive_sec = 60,
+    //     .lwt_topic = "devices/esp32s3/status",
+    //     .lwt_msg   = "offline", .lwt_qos = 1, .lwt_retain = true,
+    // };
+    // esp_err_t err = util_mqtt_init(&cfg);
+    // if (err != ESP_OK) {
+    //     LOG_ERR(TAG, err, "mqtt test failed...");
+    // }
+    
+    char prefix[10] = "JAQC";
+    esp_err_t err = app_mqtt_start(prefix);
     if (err != ESP_OK) {
         LOG_ERR(TAG, err, "mqtt test failed...");
     }

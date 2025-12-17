@@ -21,7 +21,7 @@ static void on_cmd_set(const char *topic, const uint8_t *data, int len, void *ct
     cJSON_Delete(root);
 }
 
-void app_mqtt_start(char prefix[10]) {
+esp_err_t app_mqtt_start(char prefix[10]) {
     char mqtt_id[23] = "";
     make_mqtt_client_id(prefix, mqtt_id);
     LOG_INFO(TAG, "MQTT client id: %s", mqtt_id);
@@ -32,17 +32,23 @@ void app_mqtt_start(char prefix[10]) {
         .password = "im2#1*2n2",
         .clean_session = true, 
         .keepalive_sec = 60,
-        .lwt_topic = "devices/esp32s3/status",
+        .lwt_topic = "jaqc/sig/status",
         .lwt_msg   = "offline", .lwt_qos = 1, .lwt_retain = true,
     };
-    ESP_ERROR_CHECK(util_mqtt_init(&cfg));
+    // ESP_ERROR_CHECK(util_mqtt_init(&cfg));
+    esp_err_t err = util_mqtt_init(&cfg);
+    if (err) {
+        LOG_ERR(TAG, err, "mqtt init failed");
+        return err;
+    }
 
-    util_mqtt_subscribe("devices/esp32s3/cmd/toggle", /*qos*/1, on_cmd_toggle, NULL);
-    util_mqtt_subscribe("devices/esp32s3/cmd/set",    /*qos*/1, on_cmd_set,    NULL);
+    util_mqtt_subscribe("jaqc/cmd/toggle", /*qos*/1, on_cmd_toggle, NULL);
+    util_mqtt_subscribe("jaqc/cmd/set",    /*qos*/1, on_cmd_set,    NULL);
 
     // Publish an “online” retained status on connect (or rely on LWT retained offline)
     cJSON *hello = cJSON_CreateObject();
     cJSON_AddStringToObject(hello, "status", "online");
-    util_mqtt_publish_json("devices/esp32s3/status", hello, /*qos*/1, /*retain*/true);
+    util_mqtt_publish_json("jaqc/sig/status", hello, /*qos*/1, /*retain*/true);
     cJSON_Delete(hello);
+    return err;
 }
