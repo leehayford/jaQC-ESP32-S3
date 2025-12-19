@@ -56,7 +56,13 @@ esp_err_t tlv320adc5120_deinit(void);
 #define TLV_I2C_ADDR 0x4E
 // Helper to write one register
 #define TLV_WR(reg, val) \
-    i2c_master_write_to_device(s_cfg.i2c_port, TLV_I2C_ADDR, (uint8_t[]){ (reg), (val) }, 2, pdMS_TO_TICKS(20))
+    i2c_master_write_to_device( \
+        s_cfg.i2c_port, \
+        TLV_I2C_ADDR, \
+        (uint8_t[]){ (reg), (val) }, \
+        2, \
+        pdMS_TO_TICKS(20) \
+    )
 
 
 // Ring access

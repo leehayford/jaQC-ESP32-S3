@@ -12,7 +12,6 @@ extern "C" {
 #endif
 
 esp_err_t app_tlv_start(void);
-
 #ifdef __cplusplus
 }
 #endif

@@ -437,6 +437,9 @@ esp_err_t wifi_init(char prefix[10], char ssid[33], char pass[65]) {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     LOG_INFO(TAG, "wifi driver resources allocated OK");
+    /* TODO: In case of jitter later, try this  
+    esp_wifi_set_ps(WIFI_PS_NONE); 
+    */
 
     esp_netif_create_default_wifi_ap();
     LOG_INFO(TAG, "wifi default access point created OK");

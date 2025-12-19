@@ -375,6 +375,7 @@
                 "_GLIBCXX_HAVE_POSIX_SEMAPHORE",
                 "SOC_XTAL_FREQ_MHZ=CONFIG_XTAL_FREQ",
                 "SOC_MMU_PAGE_SIZE=CONFIG_MMU_PAGE_SIZE",
+                "MBEDTLS_CONFIG_FILE=\"mbedtls/esp_config.h\"",
                 "IDF_VER=\"5.5.0\"",
                 "ESP_PLATFORM",
                 "PLATFORMIO=60118",

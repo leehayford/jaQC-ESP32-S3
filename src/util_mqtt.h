@@ -51,7 +51,7 @@ typedef void (*util_mqtt_cb_t)(
 // Init/Deinit
 esp_err_t util_mqtt_init(const util_mqtt_cfg_t *cfg);
 esp_err_t util_mqtt_deinit(void);
-
+bool util_mqtt_is_ready(void);
 
 // Subscriptions & Publishing
 int util_mqtt_subscribe(const char *topic_filter, int qos, util_mqtt_cb_t cb, void *user_ctx);
@@ -60,7 +60,9 @@ int util_mqtt_unsubscribe(const char *topic_filter);
 int util_mqtt_publish(const char *topic, const void *payload, int len, int qos, bool retain);
 int util_mqtt_publish_str(const char *topic, const char *str, int qos, bool retain);
 int util_mqtt_publish_json(const char *topic, cJSON *obj, int qos, bool retain);
+esp_err_t util_mqtt_publish_bytes(const char *topic, const uint8_t *data, size_t len, int qos, bool retain);
 
+int util_mqtt_enqueue_bytes(const char *topic, const uint8_t *data, size_t len, int qos, bool retain);
 
 // Status
 bool util_mqtt_is_connected(void);

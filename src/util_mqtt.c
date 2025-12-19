@@ -1,8 +1,7 @@
-
 #include "util_mqtt.h"
 #include "util_err.h"
 #include "util_net_events.h"
-#include "util_device.h"
+// #include "util_device.h"
 
 #include "mqtt_client.h"
 #include "esp_event.h"
@@ -14,9 +13,9 @@
 static const char *TAG = "UTIL_MQTT";
 
 // Client & config
-static esp_mqtt_client_handle_t s_client = NULL;
-static esp_mqtt_client_config_t s_idf_cfg = {0};
-static bool s_connected = false;
+static esp_mqtt_client_handle_t     s_client        = NULL;
+static esp_mqtt_client_config_t     s_idf_cfg       = {0};
+static bool                         s_connected     = false;
 
 // Sub registry (simple linked list)
 typedef struct sub_entry {
@@ -77,7 +76,9 @@ static void remove_sub_entry(const char *filter) {
 }
 
 // ---------- MQTT event handler ----------
-static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
+static void mqtt_event_handler(void *handler_args, esp_event_base_t base, 
+    int32_t event_id, void *event_data
+) {
     esp_mqtt_event_handle_t e = (esp_mqtt_event_handle_t)event_data;
 
     switch ((esp_mqtt_event_id_t)event_id) {
@@ -205,6 +206,15 @@ static void on_mqtt_stop(void *arg, esp_event_base_t base, int32_t id, void *dat
 
 
 // ---------- public API ----------
+bool util_mqtt_is_connected(void) { return s_connected; }
+
+bool util_mqtt_is_ready(void) { return s_client != NULL && s_connected; }
+
+void make_mqtt_client_id(char prefix[9], char out[23]) {
+    char mac6[13]; 
+    make_mac6(mac6);
+    snprintf(out, 23, "%s-%s", prefix, mac6);
+}
 
 int util_mqtt_subscribe(const char *filter, int qos, util_mqtt_cb_t cb, void *user_ctx) {
     if (!filter) return -1;
@@ -250,12 +260,19 @@ int util_mqtt_publish_json(const char *topic, cJSON *obj, int qos, bool retain) 
     return rc;
 }
 
-bool util_mqtt_is_connected(void) { return s_connected; }
-
-void make_mqtt_client_id(char prefix[9], char out[23]) {
-    char mac6[13]; make_mac6(mac6);
-    snprintf(out, 23, "%s-%s", prefix, mac6);
+esp_err_t util_mqtt_publish_bytes(const char *topic, const uint8_t *data, size_t len, int qos, bool retain) {
+    if (!s_client || !s_connected) return ESP_ERR_INVALID_STATE;
+    // esp_mqtt_client_publish copies payload into its internal outbox; data can be transient
+    int msg_id = esp_mqtt_client_publish(s_client, topic, (const char *)data, (int)len, qos, retain);
+    return (msg_id >= 0) ? ESP_OK : ESP_FAIL;
 }
+
+// int util_mqtt_enqueue_bytes(const char *topic, const uint8_t *data, size_t len, int qos, bool retain) {
+//     if (!s_client || !s_connected) return -1;
+//     // enqueue: always queues to outbox; returns msg_id or -1
+//     return esp_mqtt_client_enqueue(s_client, topic, (const char*)data, (int)len, qos, retain, /*store*/true);
+// }
+
 
 esp_err_t util_mqtt_init(const util_mqtt_cfg_t *cfg) {
     if (!cfg) return ESP_ERR_INVALID_ARG;
@@ -266,7 +283,6 @@ esp_err_t util_mqtt_init(const util_mqtt_cfg_t *cfg) {
 
     // Fill esp_mqtt_client_config_t
     memset(&s_idf_cfg, 0, sizeof(s_idf_cfg));
-
 
     // --- Broker address ---
     if (cfg->uri) {
@@ -286,23 +302,30 @@ esp_err_t util_mqtt_init(const util_mqtt_cfg_t *cfg) {
     s_idf_cfg.session.disable_clean_session = !cfg->clean_session;  // true -> Clean Session disabled
     s_idf_cfg.session.keepalive = cfg->keepalive_sec ? cfg->keepalive_sec : 60;
 
+    // --- MQTT buffers ---
+    s_idf_cfg.buffer.size = 8192;    
+    s_idf_cfg.buffer.out_size = 8192;
+    s_idf_cfg.outbox.limit = 256 * 1024;
+    s_idf_cfg.task.priority = 5;
+    s_idf_cfg.task.stack_size = 8192;
+
     // LWT
     s_idf_cfg.session.last_will.topic  = cfg->lwt_topic;
     s_idf_cfg.session.last_will.msg    = cfg->lwt_msg;
     s_idf_cfg.session.last_will.qos    = cfg->lwt_qos;
     s_idf_cfg.session.last_will.retain = cfg->lwt_retain;
 
-    // --- TLS / Verification (CA cert etc.) ---
-    s_idf_cfg.broker.verification.certificate    = cfg->cert_pem;          // CA bundle or specific CA (PEM)
-    s_idf_cfg.broker.verification.certificate_len= 0;                      // 0 for PEM strings (IDF expects NUL-terminated PEM) 
-    // If you use mutual TLS:
-    s_idf_cfg.credentials.authentication.certificate   = cfg->client_cert_pem;
-    s_idf_cfg.credentials.authentication.certificate_len = 0;
-    s_idf_cfg.credentials.authentication.key           = cfg->client_key_pem;
-    s_idf_cfg.credentials.authentication.key_len       = 0;
+    // // --- TLS / Verification (CA cert etc.) ---
+    // s_idf_cfg.broker.verification.certificate    = cfg->cert_pem;          // CA bundle or specific CA (PEM)
+    // s_idf_cfg.broker.verification.certificate_len= 0;                      // 0 for PEM strings (IDF expects NUL-terminated PEM) 
+    // // If you use mutual TLS:
+    // s_idf_cfg.credentials.authentication.certificate   = cfg->client_cert_pem;
+    // s_idf_cfg.credentials.authentication.certificate_len = 0;
+    // s_idf_cfg.credentials.authentication.key           = cfg->client_key_pem;
+    // s_idf_cfg.credentials.authentication.key_len       = 0;
 
-    // --- Network ---
-    s_idf_cfg.network.disable_auto_reconnect = cfg->disable_auto_reconnect;
+    // // --- Network ---
+    // s_idf_cfg.network.disable_auto_reconnect = cfg->disable_auto_reconnect;
 
     s_client = esp_mqtt_client_init(&s_idf_cfg);
     if (!s_client) return ESP_FAIL;

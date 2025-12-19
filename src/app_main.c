@@ -13,6 +13,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
 
 // TODO: move to app_io.h/.c
 #include "driver/gpio.h"
@@ -115,6 +116,34 @@ void confirm_start_webserver() {
 }
 
 #include "app_mqtt.h"
+
+static void log_mqtt_buffers(void) {
+#if defined(CONFIG_MQTT_BUFFER_SIZE)
+    int work = CONFIG_MQTT_BUFFER_SIZE;
+#else
+    int work = -1;
+#endif
+
+#if defined(CONFIG_MQTT_TRANSPORT_SEND_BUFFER)
+    int send = CONFIG_MQTT_TRANSPORT_SEND_BUFFER;
+#else
+    int send = -1;
+#endif
+
+#if defined(CONFIG_MQTT_TRANSPORT_RECV_BUFFER)
+    int recv = CONFIG_MQTT_TRANSPORT_RECV_BUFFER;
+#else
+       int recv = -1;
+#endif
+
+    LOG_INFO(TAG, "MQTT buffers: work=%d send=%d recv=%d", work, send, recv);
+
+    if (work < 0 || send < 0) {
+        LOG_WARN(TAG, ESP_FAIL,
+                 "MQTT buffer macros not visible; PlatformIO likely hasn't indexed sdkconfig.h yet. "
+                 "Run 'pio run' or 'pio run -t menuconfig' to verify Kconfig.");
+    }
+}
 static bool mqtt_initialized = false;
 void confirm_start_mqtt() {
     // char mqtt_id[23] = "";
@@ -136,6 +165,8 @@ void confirm_start_mqtt() {
     //     LOG_ERR(TAG, err, "mqtt test failed...");
     // }
     
+    log_mqtt_buffers();
+
     char prefix[10] = "JAQC";
     esp_err_t err = app_mqtt_start(prefix);
     if (err != ESP_OK) {
@@ -200,7 +231,7 @@ void app_main(void) {
     io_init(PIN_OUT_WIFI_BLUE_LED);
     io_init(PIN_OUT_WIFI_RED_LED);
 
-    confirm_ADC_start();
+    // confirm_ADC_start();
 
     int count = 0;
     // Do tasks
@@ -237,6 +268,7 @@ void app_main(void) {
             } else if (wifi_state == WIFI_UI_CONNECTED && !mqtt_initialized) {
                 confirm_start_mqtt();
                 mqtt_initialized = true;
+                confirm_ADC_start();
             }
         }
     }

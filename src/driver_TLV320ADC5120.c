@@ -14,6 +14,13 @@ static const char *TAG = "TLV320DRV";
 
 static tlv320adc5120_bus_cfg_t s_cfg;
 static i2s_chan_handle_t s_rx_chan = NULL;
+
+typedef struct {
+    uint8_t  dma_buf[TLV_DMA_BUF_COUNT][TLV_DMA_BUF_SZ];
+    uint16_t rd_idx;
+    uint16_t wr_idx;
+} tlv_ring_t;
+
 static tlv320adc5120_dma_ring_t s_ring;
 
 
@@ -61,6 +68,19 @@ void i2c_scan(void) {
     i2c_driver_delete(I2C_NUM_0);
 }
 
+
+static void tlv_dump_status(void) {
+    uint8_t v;
+    // Page 0
+    TLV_WR(0x00, 0x00);
+    if (i2c_read_reg(0x15, &v, 1) == ESP_OK) {
+        LOG_INFO(TAG, "TLV 0x15 ASI_STS = 0x%02X", v);
+    }
+    if (i2c_read_reg(0x76, &v, 1) == ESP_OK) {
+        LOG_INFO(TAG, "TLV 0x76 DEV_STS0 = 0x%02X", v);
+    }
+}
+
 static void tlv_dump_regs(void) {
     uint8_t v;
 
@@ -78,9 +98,12 @@ static void tlv_dump_regs(void) {
     i2c_read_reg(0x1F, &v, 1); LOG_INFO(TAG, "TLV 0x1F PDMCLK_CFG = 0x%02X", v);
 
     i2c_read_reg(0x3C, &v, 1); LOG_INFO(TAG, "TLV 0x3C CH1_CFG0 = 0x%02X", v);
+    i2c_read_reg(0x3E, &v, 1); LOG_INFO(TAG, "TLV 0x3E CH1_CFG2 = 0x%02X", v);
     i2c_read_reg(0x41, &v, 1); LOG_INFO(TAG, "TLV 0x41 CH2_CFG0 = 0x%02X", v);
+    i2c_read_reg(0x43, &v, 1); LOG_INFO(TAG, "TLV 0x43 CH2_CFG2 = 0x%02X", v);
 
     i2c_read_reg(0x6B, &v, 1); LOG_INFO(TAG, "TLV 0x6B DSP_CFG0 = 0x%02X", v);
+    i2c_read_reg(0x73, &v, 1); LOG_INFO(TAG, "TLV 0x73 IN_CH_EN = 0x%02X", v);
     i2c_read_reg(0x74, &v, 1); LOG_INFO(TAG, "TLV 0x74 ASI_OUT_CH_EN = 0x%02X", v);
     
     LOG_INFO(TAG, "TLV Page 1:");
@@ -163,14 +186,14 @@ static esp_err_t tlv_cfg_device(void) {
 
     /* 0x07 - ASI_CFG0 Register
     7-6 01          I2S model
-    5-4 11          Slot width 32 bits
+    5-4 11          Slot width 32 bits (10 -> 24 bits)
     3   0           Default FSYNC polarity 
     2   0           Default BCLK polarity
     1   0           Default transmit edge ()
     0   0           Transmit 0 for unused cycles
     */ 
-   err |= TLV_WR(0x07, 0x70); // 0111 0000 - 0x70 - I2S - 32 bit slot
-//    err |= TLV_WR(0x07, 0x60); // 0011 0000 - 0x70 - TDM - 32 bit slot
+//    err |= TLV_WR(0x07, 0x70); // 0111 0000 - 0x70 - I2S - 32 bit slot
+   err |= TLV_WR(0x07, 0x60); // 0110 0000 - 0x60 - TDM - 24 bit slot
     
     /* 0x0B - ASI_CH1 Register
     7-6 00          RESERVED; Write only reset value (00b)
@@ -182,7 +205,8 @@ static esp_err_t tlv_cfg_device(void) {
     7-6 00          RESERVED; Write only reset value (00b)
     5-0 000001      Ch2 is registered to I2S left slot 1
     */ 
-   err |= TLV_WR(0x0C, 0x01); // 0000 0001 - 0x01
+//    err |= TLV_WR(0x0C, 0x01); // 0000 0001 - 0x01
+   err |= TLV_WR(0x0C, 0x20); // 0010 0000 - 0x20 (right slot 0)
 
     /* 0x0D - ASI_CH3 Register
     7-6 00          RESERVED; Write only reset value (00b)
@@ -208,10 +232,11 @@ static esp_err_t tlv_cfg_device(void) {
 
     /* 0x1F - PDMCLK_CFG Register (Pulse Density Modulation Clock)
     7   0           RESERVED; Write only reset value (0b)
-    6-2 00100       RESERVED; Write only reset value (10000b) But PPC3 told me to write 00010b so... 
+    6-2 00100       RESERVED; Write only reset value (10000b) But PPC3 told me to write 00100b so... 
     1-2 00          PDMCLK is 2.8224 MHz or 3.072 MHz
     */
-    err |= TLV_WR(0x1F, 0x08); // 0000 1000 - 0x08
+    // err |= TLV_WR(0x1F, 0x08); // 0001 1000 - 0x08
+    err |= TLV_WR(0x1F, 0x01); // 0001 0000 - 0x10
     
     /* 0x3C - CH1_CFG0 Register - CHANNEL 1 CONFIG
     7   1           Line input type
@@ -242,6 +267,16 @@ static esp_err_t tlv_cfg_device(void) {
                     See Page 4 writes below
     */
     err |= TLV_WR(0x6B, 0x00); // 0000 0000 - 0x00 all-pass
+   
+    /* *** NOT ORIGINALLY INCLUDED IN PPC3 OUTPUT ***
+    0x73 - IN_CH_EN Register - Enable CH1 and CH2 INPUT/ADC paths into the internal pipeline
+    7   1           Channel 1 input enabled
+    6   1           Channel 2 input enabled
+    5   1           Channel 3 input disabled
+    4   1           Channel 4 input disabled
+    3-0 0000        RESERVED; Write only reset value (0000b)
+    */
+    err |= TLV_WR(0x73, 0xC0); // 1100 0000 - 0xC0 
 
     /* 0x74 - ASI_OUT_CH_EN Register - 
     7   1           Channel 1 output slot is enabled
@@ -250,7 +285,19 @@ static esp_err_t tlv_cfg_device(void) {
     4   1           Channel 4 output slot is a tri-state condition
     3-0 0000        RESERVED; Write only reset value (0000b)
     */
-    err |= TLV_WR(0x74, 0xC0); // 1100 0000
+    err |= TLV_WR(0x74, 0xC0); // 1100 0000 - 0xC0
+
+    /* *** NOT ORIGINALLY INCLUDED IN PPC3 OUTPUT ***
+    0x3E - CH1_CFG2 Register - CHANNEL 1 CONFIG
+    7-0 11001001    Digital volume control is set to 0 dB
+    */
+    err |= TLV_WR(0x3E, 0xC9);  // 11001001 - 0xC9
+
+    /* *** NOT ORIGINALLY INCLUDED IN PPC3 OUTPUT ***
+    0x43 - CH2_CFG2 Register - CHANNEL 2 CONFIG
+    7-0 11001001    Digital volume control is set to 0 dB
+    */
+    err |= TLV_WR(0x43, 0xC9);  // 11001001 - 0xC9
 
     /* 0x75 - PWR_CFG Register - 
     7   0           Power down MICBIAS
@@ -261,7 +308,8 @@ static esp_err_t tlv_cfg_device(void) {
     1   0           RESERVED; Write only reset value (0b)
     0   0           VAD Voice activity detection disabled
     */
-    err |= TLV_WR(0x75, 0x70); // 0111 0000 YUP
+    // err |= TLV_WR(0x75, 0x70); // 0111 0000 - 0x70 YUP
+    err |= TLV_WR(0x75, 0xE0); // 1110 0000 - 0xE0 "Known Good" according to ChatGPT
 /******** */
 
 
@@ -338,7 +386,7 @@ static esp_err_t i2s_setup(void) {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(s_cfg.i2s_port, I2S_ROLE_MASTER);
 
     err = i2s_new_channel(&chan_cfg, NULL, &s_rx_chan); // RX only
-    if (err != ESP_OK) return err;
+    if (err) return err;
 
     // Build Philips I2S 24-bit stereo slot config for ESP32‑S3
     i2s_std_slot_config_t slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
@@ -385,26 +433,86 @@ static esp_err_t i2s_setup(void) {
 
 // ---------------- DMA reader task ----------------
 static TaskHandle_t s_reader = NULL;
+// static void reader_task(void *arg) {
+//     LOG_INFO(TAG, "reader_task started");
+//     size_t bytes_read = 0;
+//     uint32_t ok = 0; /* TODO: Remove after debug */
+//     while (1) {
+//         // Read exactly one DMA frame (512 bytes) every time we're called
+//         esp_err_t r = i2s_channel_read(s_rx_chan, s_ring.dma_buf[s_ring.wr_idx], 
+//             TLV_DMA_BUF_SZ, &bytes_read, pdMS_TO_TICKS(200));
+
+//         if (r == ESP_OK && bytes_read == TLV_DMA_BUF_SZ) {
+//             s_ring.wr_idx = (s_ring.wr_idx + 1) % TLV_DMA_BUF_COUNT;
+            
+//             if ((++ok % 100) == 0) { /* TODO: Remove after debug */
+//                 LOG_INFO(TAG, "reader: %lu blocks read", ok);
+//             }
+//             taskYIELD();
+//         } else {
+//             LOG_WARN(TAG, r, "i2s read err=%d bytes=%u", r, (unsigned)bytes_read);
+//             taskYIELD();
+//         }
+//     }
+// }
+
 static void reader_task(void *arg) {
     LOG_INFO(TAG, "reader_task started");
-    size_t bytes_read = 0;
-    uint32_t ok = 0; /* TODO: Remove after debug */
-    while (1) {
-        // Read exactly one DMA frame (512 bytes) every time we're called
-        esp_err_t r = i2s_channel_read(s_rx_chan, s_ring.dma_buf[s_ring.wr_idx], 
-            TLV_DMA_BUF_SZ, &bytes_read, pdMS_TO_TICKS(200));
+    uint32_t ok = 0;
+    static uint32_t verbose_left = 30; // print the next 30 read results verbosely
+    static uint32_t sanity_reads = 30;
 
-        if (r == ESP_OK && bytes_read == TLV_DMA_BUF_SZ) {
-            s_ring.wr_idx = (s_ring.wr_idx + 1) % TLV_DMA_BUF_COUNT;
-            
-            if ((++ok % 100) == 0) { /* TODO: Remove after debug */
-                LOG_INFO(TAG, "reader: %lu blocks read", ok);
-            }
-            taskYIELD();
-        } else {
-            LOG_WARN(TAG, r, "i2s read err=%d bytes=%u", r, (unsigned)bytes_read);
-            taskYIELD();
+    for (;;) {
+        
+        // --- HEARTBEAT so we know the loop is running ---
+        static uint32_t hb = 0;
+        if (((++hb) % 200) == 0) {  // every ~200 iterations
+            LOG_INFO(TAG, "reader hb=%lu", hb);
         }
+
+        size_t filled = 0;
+        uint8_t *dst = s_ring.dma_buf[s_ring.wr_idx];
+
+        // Gather exactly one 512B ring frame by accumulating partial reads
+        while (filled < TLV_DMA_BUF_SZ) {
+            size_t bytes_read = 0;
+            esp_err_t r = i2s_channel_read(s_rx_chan,
+                dst + filled,
+                TLV_DMA_BUF_SZ - filled,
+                &bytes_read,
+                pdMS_TO_TICKS(200)
+            ); // keep 50–200ms as you prefer
+
+            // if (verbose_left > 0) {
+            //     LOG_INFO(TAG, "read r=%d bytes=%u need=%u filled=%u",
+            //         r, (unsigned)bytes_read,
+            //         (unsigned)(TLV_DMA_BUF_SZ - filled),
+            //         (unsigned)filled
+            //     );
+            //     verbose_left--;
+            // }
+
+            if (r == ESP_OK && bytes_read > 0) {
+                filled += bytes_read;
+            } else { // Yield and retry; allow other tasks to run
+                taskYIELD();
+            }
+        }
+
+        // if (filled == TLV_DMA_BUF_SZ
+        // &&  sanity_reads > 0
+        // ) {
+        //     uint32_t *w = (uint32_t *)s_ring.dma_buf[s_ring.wr_idx];
+        //     LOG_INFO(TAG, "first words: %08lx %08lx %08lx %08lx", w[0], w[1], w[2], w[3]);
+        //     sanity_reads--;
+        // }
+
+        // We have 512 bytes assembled — advance write index
+        s_ring.wr_idx = (s_ring.wr_idx + 1) % TLV_DMA_BUF_COUNT;
+        if (((++ok) % 100) == 0) {
+            LOG_INFO(TAG, "reader: %lu blocks read", ok);
+        }
+        taskYIELD();
     }
 }
 
@@ -432,6 +540,7 @@ esp_err_t tlv320adc5120_init(const tlv320adc5120_bus_cfg_t *cfg) {
 
     ESP_RETURN_ON_ERROR(tlv_reset_device_pg0(), TAG, "ADC page 0 reset");
     ESP_RETURN_ON_ERROR(tlv_cfg_device(), TAG, "ADC cfg");
+    tlv_dump_status();
 
     ESP_RETURN_ON_ERROR(i2s_setup(), TAG, "i2s setup");
 
@@ -443,9 +552,12 @@ esp_err_t tlv320adc5120_start(void) {
     ESP_RETURN_ON_ERROR(i2s_channel_enable(s_rx_chan), TAG, "i2s_channel_enable");
     
     LOG_INFO(TAG, "I2S RX enabled; waiting for DMA...");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    tlv_dump_status();  // after clocks are flowing
 
     // if (!s_reader) xTaskCreate(reader_task, "tlv_reader", 4096, NULL, 5, &s_reader);
-    xTaskCreatePinnedToCore(reader_task, "tlv_reader", 4096, NULL, 1, &s_reader, /*core*/ 1);
+    // xTaskCreatePinnedToCore(reader_task, "tlv_reader", 4096, NULL, 1, &s_reader, /*core*/ 0);
+    xTaskCreatePinnedToCore(reader_task, "tlv_reader", 4096, NULL, 3, &s_reader, /*core*/ 0);
     
     LOG_INFO(TAG, "driver start OK");
     return ESP_OK;
